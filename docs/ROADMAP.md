@@ -1,9 +1,15 @@
 # Roadmap
 
 Milestones are sequenced so each one is independently useful and testable —
-no "big bang" integration at the end.
+no "big bang" integration at the end. Ordering below was revised to push
+the GUI to last: this project is being built and validated in headless
+sandboxed environments, so milestones that stay fully testable there
+(decompiler, sandbox, debugger, project management, headless plugin/API
+work) come first; the GUI — the one milestone that genuinely needs a
+different environment (a real display) to test — comes only once
+everything it would sit on top of already exists and works.
 
-## Milestone 0 — Core engine skeleton (this session)
+## Milestone 0 — Core engine skeleton (complete)
 
 - [x] Project scaffold, CMake build
 - [x] `IAnalysisBackend` + radare2-backed implementation
@@ -93,7 +99,7 @@ no "big bang" integration at the end.
       stripped binary, not a same-offset coincidence — for both backends
       (`scripts/signature_smoke_test.sh`)
 
-## Milestone 3 — Decompiler
+## Milestone 3 — Decompiler (up next)
 
 - [ ] `GhidraDecompilerBackend`: headless pipe integration with Ghidra's
       native `decompile` binary
@@ -101,16 +107,7 @@ no "big bang" integration at the end.
 - [ ] Interim: `r2dec`/`r2ghidra` text-output fallback view while the above
       is built
 
-## Milestone 4 — GUI (Qt)
-
-- [ ] Application shell, docking, linear + graph disassembly views
-- [ ] Hex editor view
-- [ ] IL view (LLIL/MLIL/HLIL toggle) synced to disassembly selection
-- [ ] Type view / type editor
-- [ ] Plugin manager UI + community plugin index
-- [ ] Cross-platform installers (Linux deb/rpm/AppImage, macOS, Windows) via CI
-
-## Milestone 5 — Dynamic sandbox
+## Milestone 4 — Dynamic sandbox (up next)
 
 - [x] Verify QEMU TCG (no KVM) actually executes code in a plain container
       — `scripts/tcg_probe.sh`
@@ -130,15 +127,22 @@ no "big bang" integration at the end.
       builders (dockur/windows, cocoonstack/windows) require KVM, which
       this environment doesn't have; stays a documented "bring your own on
       a KVM host" item, not something this project builds/ships
-- [ ] GUI surface for sandbox results
+- [ ] GUI surface for sandbox results — deferred to Milestone 8, same as
+      every other GUI-surfacing item; the sandbox's own headless pipeline
+      (above) is fully testable without it
 
-## Milestone 6 — Debugger
+## Milestone 5 — Debugger
+
+Headless-testable throughout (ptrace/gdbserver interaction, breakpoint/
+register/memory state — none of it needs a display), which is why this
+comes before the GUI despite being numbered after it in earlier drafts of
+this roadmap.
 
 - [ ] `IDebuggerBackend` over `r_debug`/`RzDebug`
 - [ ] Local ptrace debugging (Linux), then remote (gdbserver/WinDbg protocol)
-- [ ] GUI breakpoint/register/memory views
+- [ ] GUI breakpoint/register/memory views — deferred to Milestone 8
 
-## Milestone 7 — Project management & collaboration
+## Milestone 6 — Project management & collaboration
 
 - [ ] Local project format (SQLite-backed), external links between files
 - [ ] "Firmware Ninja"-equivalent: multi-file firmware image analysis built
@@ -148,7 +152,7 @@ no "big bang" integration at the end.
 - [ ] Collaborative analysis: CRDT-based merge for concurrent edits to the
       same database (types, comments, function names)
 
-## Milestone 8 — Shellcode compiler (not in Binary Ninja's own feature
+## Milestone 7 — Shellcode compiler (not in Binary Ninja's own feature
    table — added on request)
 
 Not a decompiler-adjacent thing; the opposite direction — compiles a
@@ -171,11 +175,30 @@ doesn't require Binary Ninja to run.
       address — the actual useful RE workflow this unlocks, not just
       running `scc` as an external tool with no integration
 
+## Milestone 8 — GUI (Qt) (last, deliberately)
+
+Moved to last: this is the one milestone that genuinely needs a different
+environment to test (a real display — headless sandboxes can't validate
+"does this look and behave right"), and every other milestone above it
+builds real, independently useful, headlessly-testable functionality this
+GUI will eventually sit on top of. Every GUI-surfacing item deferred from
+earlier milestones (sandbox results, debugger views, plugin manager UI)
+lands here too.
+
+- [ ] Application shell, docking, linear + graph disassembly views
+- [ ] Hex editor view
+- [ ] IL view (LLIL/MLIL/HLIL toggle) synced to disassembly selection
+- [ ] Type view / type editor
+- [ ] Plugin manager UI + community plugin index
+- [ ] Sandbox detonation-result views (Milestone 4), debugger
+      breakpoint/register/memory views (Milestone 5)
+- [ ] Cross-platform installers (Linux deb/rpm/AppImage, macOS, Windows) via CI
+
 ## Explicit non-goals (for now)
 
 - Reimplementing Capstone/Sleigh's instruction decoders from scratch — no
   value in duplicating well-tested disassemblers.
 - A from-scratch decompiler before the Ghidra-backed one exists and is
   validated — decompilers are extremely easy to get subtly wrong.
-- A from-scratch C-to-shellcode compiler — see Milestone 8: `scc` already
+- A from-scratch C-to-shellcode compiler — see Milestone 7: `scc` already
   exists, is already open source, and solves this.

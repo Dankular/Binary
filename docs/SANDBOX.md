@@ -164,8 +164,9 @@ real, separate pieces of work).
 6. Network fakery: wire `-netdev user` DNS/proxy options at an
    INetSim/FakeNet-NG instance; capture the pcap.
 7. **Windows guest support** — investigated, not built (see below for why).
-8. GUI surface for sandbox results (Milestone 4-adjacent, after the GUI
-   itself exists).
+8. GUI surface for sandbox results — deferred to Milestone 8 (GUI, moved
+   to last: it's the one milestone needing a real display to test, and
+   everything above is fully headlessly testable without it).
 
 ### Windows guest: what's feasible and what isn't
 

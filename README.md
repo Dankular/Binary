@@ -160,7 +160,7 @@ Status legend: ✅ implemented · 🚧 in progress / partial · 📋 designed, n
 | Decompilation architectures | 18+ | 🚧 (4 validated today) | Inherited from Ghidra Sleigh + Rizin arch plugins; enabled incrementally |
 | Community architectures (extension manager) | ✅ | — | Depends on plugin manager (below) |
 | File formats | 9+ | 🚧 (ELF, PE64, raw validated; Mach-O not yet) | `rz_bin`/`r_bin` already parses ELF/PE/Mach-O/raw/etc.; exposed via our loader today |
-| Hex editor | ✅ | — | Milestone 2 (Qt GUI) |
+| Hex editor | ✅ | — | Milestone 8 (Qt GUI — deliberately last, see docs/ROADMAP.md: it's the one milestone needing a real display to test) |
 | Type libraries/archives/signatures | ✅ | 🚧 | Type system v1 implemented (primitives/pointers/arrays/structs/unions + width-based propagation onto stack vars); function signature matching (FLIRT/zignatures) implemented and verified per-backend — see below; type *libraries/archives* (sharing struct/typedef definitions across projects, Ghidra data type archives) still planned |
 | Debugger | ✅ | — | `rz_debug`/`r_debug` backends (ptrace/gdbserver/WinDbg) behind `IDebuggerBackend` |
 | "Sidekick"-capable (AI assist) | ✅ (partial purchase) | — | Optional plugin calling any LLM API; no vendor lock-in |
