@@ -130,9 +130,34 @@ no "big bang" integration at the end.
 - [ ] Collaborative analysis: CRDT-based merge for concurrent edits to the
       same database (types, comments, function names)
 
+## Milestone 8 — Shellcode compiler (not in Binary Ninja's own feature
+   table — added on request)
+
+Not a decompiler-adjacent thing; the opposite direction — compiles a
+restricted C dialect into position-independent shellcode (x86/x64/ARM/
+AArch64/MIPS/PPC, ELF/Mach-O/PE or flat blobs), for patching/injecting
+code into a target under analysis. Binary Ninja ships one
+([Vector35/scc](https://github.com/Vector35/scc)) as a standalone,
+already-MIT-licensed, separately-maintained project — not built on BNIL,
+doesn't require Binary Ninja to run.
+
+- [ ] Vendor/wrap the existing MIT-licensed `scc` rather than writing a new
+      C-to-shellcode compiler — same "don't reimplement what's already
+      good and open source" principle as the non-goals below. It's
+      unmaintained upstream but PR-friendly per its own README; forking if
+      a real fix is needed is reasonable, rewriting from scratch isn't.
+- [ ] `compass-cli --compile-shellcode <file.c> --arch <arch> --os <os>`
+      subcommand wrapping the vendored `scc` binary
+- [ ] A Workflow pass (see Milestone 2) that compiles a C snippet and
+      patches the resulting shellcode into the loaded binary at a chosen
+      address — the actual useful RE workflow this unlocks, not just
+      running `scc` as an external tool with no integration
+
 ## Explicit non-goals (for now)
 
 - Reimplementing Capstone/Sleigh's instruction decoders from scratch — no
   value in duplicating well-tested disassemblers.
 - A from-scratch decompiler before the Ghidra-backed one exists and is
   validated — decompilers are extremely easy to get subtly wrong.
+- A from-scratch C-to-shellcode compiler — see Milestone 8: `scc` already
+  exists, is already open source, and solves this.
