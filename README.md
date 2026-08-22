@@ -113,8 +113,16 @@ Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
       `DetonationReport` (syscalls, file events, network events) —
       `compass-cli --detonate <sample>`, verified end to end against a real
       fixture (`scripts/sandbox_detonate_test.sh`) — see
-      [docs/SANDBOX.md](docs/SANDBOX.md). Findings merge onto the static
-      `Binary`/`Function` model as annotations
+      [docs/SANDBOX.md](docs/SANDBOX.md). Windows guest:
+      `WindowsSandboxProvider` wraps the real `docker.io/dockurr/windows`
+      container, verified end to end with a real Windows Server 2003
+      install booting under TCG to a genuine RDP handshake
+      (`compass-cli --detonate <sample> --windows-iso <path-or-VERSION>`,
+      `scripts/windows_sandbox_smoke_test.sh`) — v1 proves boot +
+      reachability only, no in-guest sample delivery/execution yet
+      (honestly reflected: `completed` stays `false` even on a fully
+      successful boot). Findings merge onto the static `Binary`/`Function`
+      model as annotations
       (`--merge-annotations`) — see [docs/ANNOTATIONS.md](docs/ANNOTATIONS.md)
 - [x] Decompiler: `IAnalysisBackend::decompile()` over rz-ghidra (a
       self-contained port of Ghidra's C++ decompiler, no JVM) —
@@ -169,6 +177,7 @@ Run the tests:
 ./scripts/tcg_probe.sh             # sandbox groundwork: QEMU TCG works with no /dev/kvm
 ./scripts/linux_guest_probe.sh     # sandbox groundwork: real guest boot + serial control
 ./scripts/sandbox_detonate_test.sh # sandbox: real end-to-end detonation, asserts on captured syscalls/files/network
+./scripts/windows_sandbox_smoke_test.sh # sandbox: Windows guest plumbing against the real dockur/windows container (needs WINDOWS_ISO)
 ./scripts/build_rz_ghidra.sh       # installs rz-ghidra (Ghidra's C++ decompiler, self-contained) as a Rizin plugin
 ./scripts/decompile_smoke_test.sh  # decompiler: real Ghidra-backed decompile, asserts on the actual output
 ./scripts/debugger_smoke_test.sh   # debugger: real ptrace session against a PIE fixture, asserts breakpoint/exit/timeout behavior
@@ -204,7 +213,7 @@ Status legend: ✅ implemented · 🚧 in progress / partial · 📋 designed, n
 | Single sign-on (SSO) | ✅ | — | Project server milestone (OIDC) |
 | Access control & auditing | ✅ | — | Project server milestone |
 | Collaborative analysis | ✅ | — | Project server milestone (CRDT-based merge, like BN's) |
-| Sandbox / dynamic detonation (any.run-style)* | — (not a BN feature) | 🚧 | See [docs/SANDBOX.md](docs/SANDBOX.md) — QEMU **TCG** (no `/dev/kvm` needed). `QemuTcgSandboxProvider` detonates a sample in a disposable overlay and returns a real syscall/file/network `DetonationReport` (`compass-cli --detonate`), verified end to end (`scripts/sandbox_detonate_test.sh`). Findings merge onto the static `Binary`/`Function` model as annotations (`--merge-annotations`, see [docs/ANNOTATIONS.md](docs/ANNOTATIONS.md)) — file/network events today; per-block/per-call-site attribution is implemented and unit tested but has no live data source yet (strace doesn't report call sites). Remaining work: a Windows guest (verified feasible under TCG via dockur/windows's real `KVM=N` path, confirmed by running it directly — an earlier draft of this claim was wrong — plan is to vendor its bootstrap, not yet wired up) |
+| Sandbox / dynamic detonation (any.run-style)* | — (not a BN feature) | 🚧 | See [docs/SANDBOX.md](docs/SANDBOX.md) — QEMU **TCG** (no `/dev/kvm` needed). Linux guest: `QemuTcgSandboxProvider` detonates a sample in a disposable overlay and returns a real syscall/file/network `DetonationReport` (`compass-cli --detonate`), verified end to end (`scripts/sandbox_detonate_test.sh`). Windows guest: `WindowsSandboxProvider` wraps the real `docker.io/dockurr/windows` container (not a reimplementation), verified end to end with a real Windows Server 2003 install booting under TCG to a real RDP handshake (`compass-cli --detonate --windows-iso`, `scripts/windows_sandbox_smoke_test.sh`) — v1 proves the guest boots and is reachable but doesn't yet deliver/execute a sample inside it, which `completed` staying `false` reflects honestly. Findings merge onto the static `Binary`/`Function` model as annotations (`--merge-annotations`, see [docs/ANNOTATIONS.md](docs/ANNOTATIONS.md)) — file/network events today; per-block/per-call-site attribution is implemented and unit tested but has no live data source yet (strace doesn't report call sites) |
 
 \* Added per project owner's request — not part of Binary Ninja's feature set, but a natural extension for a modern RE platform.
 

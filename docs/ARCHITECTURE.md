@@ -430,3 +430,16 @@ one does, a PIE sample's guest-runtime addresses would need the same
 ASLR-base normalization the debugger already solved (see DEBUGGER.md) —
 neither blocks the merge logic itself, which is implemented and unit
 tested against hand-built data with real addresses.
+
+`WindowsSandboxProvider` (`src/core/src/windows_sandbox_provider.cpp`) is
+the Windows-guest counterpart — wraps the real
+`docker run docker.io/dockurr/windows` container rather than
+reimplementing its unattended-install bootstrap, verified end to end with
+a real Windows Server 2003 install booting under TCG to a genuine RDP
+protocol handshake. Its v1 scope is deliberately honest about a real gap:
+there is no Windows-side equivalent of `sandbox/agent/agent.sh` yet (RDP
+has no serial-console-style scripting channel), so `detonate()` never
+reports `completed == true`, even on a fully successful boot — see
+SANDBOX.md for the full account, including a real false-positive
+readiness bug this caught (a plain TCP connect to the RDP port succeeds
+immediately, before Windows is anywhere near ready).

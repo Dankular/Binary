@@ -208,9 +208,13 @@ worked:
    and installs its own dependency (`apt-get install strace`) on first run.
 6. Network fakery: wire `-netdev user` DNS/proxy options at an
    INetSim/FakeNet-NG instance; capture the pcap.
-7. **Windows guest support** — verified feasible via a vendored/wrapped
-   `dockur/windows` under TCG (see below); not yet integrated into
-   `ISandboxProvider`.
+7. ~~**Windows guest support**~~ — `WindowsSandboxProvider`
+   (`src/core/src/windows_sandbox_provider.cpp`), wrapping
+   `docker run docker.io/dockurr/windows` rather than reimplementing its
+   bootstrap. Verified end to end in this environment with a real Windows
+   Server 2003 install — see below for the full account, including v1's
+   honest scope limit (proves the guest boots and becomes reachable; does
+   not yet deliver/execute a sample inside it).
 8. GUI surface for sandbox results — deferred to Milestone 8 (GUI, moved
    to last: it's the one milestone needing a real display to test, and
    everything above is fully headlessly testable without it).
@@ -278,18 +282,152 @@ redistribution of Microsoft's copyrighted OS binaries by a third party,
 not an installer that fetches from Microsoft — a materially different (and
 murkier) licensing situation than either builder's own source.
 
-**Conclusion, revised:** per the user's direction, the plan is to vendor/
-wrap dockur/windows's actual bootstrap (`entry.sh`/`define.sh`/`proc.sh`/
-`disk.sh`/`answer.sh`/`image.sh` — ISO mirror discovery, unattended-install
-answer-file generation, virtio driver injection, the TCG-capable QEMU
-invocation itself) behind `ISandboxProvider`, the same "reuse what's
-already open source and working" principle already applied to Rizin,
-Ghidra, and SCC — **not** reimplement Windows unattended-install
-automation from scratch. Not yet wired up: a full run (a real Windows
-version, not the ReactOS proof above) is a multi-GB download and a long
-install even before the ~10x TCG slowdown, genuinely impractical to
-complete inside a normal work session — the integration should be built
-and structurally validated (does the vendored bootstrap invoke correctly,
-does `ISandboxProvider` drive it, does a `DetonationReport` come back) the
-same way the Linux guest path was: boot to a meaningful checkpoint, not a
-multi-hour full run every time it's touched.
+**Conclusion, revised again — this is now wired up and verified end to
+end, not just structurally validated:** `WindowsSandboxProvider`
+(`src/core/src/windows_sandbox_provider.cpp`) wraps
+`docker run docker.io/dockurr/windows` — the actual published container,
+not a reimplementation of its `entry.sh`/`define.sh`/`proc.sh`/`disk.sh`/
+`answer.sh`/`image.sh` bootstrap — the same "reuse what's already open
+source and working" principle applied to Rizin, Ghidra, and SCC.
+
+### Disk space, revised: a full real-Windows run turned out to be practical after all
+
+An earlier version of this document (and an earlier answer to the user)
+said a full real-Windows install was "a multi-GB download and a long
+install, genuinely impractical to complete inside a normal work session."
+That was true for the default edition (`VERSION=11`, 7.9 GB) but wrong as
+a blanket claim — dockur/windows documents a `VERSION` table with sizes
+down to `2003` (Windows Server 2003, **0.6 GB**), which fits easily within
+this environment's actual disk budget (checked directly with `df` before
+starting — see the note on this environment's disk being a fixed
+per-session allowance, not the filesystem's full size). Re-checking a
+premise against the actual numbers, instead of repeating an earlier
+"impractical" characterization from before the numbers were checked, is
+exactly the discipline this project has tried to hold throughout.
+
+### TLS interception breaks dockur's own in-container downloader — a documented, worked-around limitation
+
+Running dockur/windows with a bare `VERSION=2003` (letting it download the
+ISO itself) failed identically against all three of its ISO mirrors:
+
+```
+❯ ERROR: Failed to download https://dl.bobpony.com/windows/server/2003r2/...zip :
+  SSL/TLS handshake failure: `not signed by known authorities or invalid'
+❯ ERROR: Failed to download https://files.dog/MSDN/Windows%20Server%202003%20R2/...iso :
+  SSL/TLS handshake failure: `not signed by known authorities or invalid'
+❯ ERROR: Failed to download https://archive.org/download/.../....iso :
+  SSL/TLS handshake failure: `not signed by known authorities or invalid'
+❯ ERROR: All download methods failed for Windows Server 2003!
+```
+
+Same class of issue documented elsewhere in this project (Rizin's
+tree-sitter dependency, `deb.debian.org` from inside the Linux guest): this
+environment's outbound HTTPS goes through a TLS-intercepting proxy, and
+the container's own trust store doesn't include that proxy's CA (it's a
+separate filesystem from the host, which does have the CA configured).
+Confirmed this was proxy-trust-specific, not a real network/mirror
+failure: `curl` from the **host** against the exact same three URLs all
+returned `200`, and the `archive.org` one downloaded the complete,
+correct file — its SHA-256 matches the checksum dockur/windows's own
+`define.sh` hardcodes for `win2003r2` byte-for-byte:
+
+```
+74245cba888f935b138b106c2744bec7f392925b472358960a0b5643cd6abb32
+```
+
+Rather than inject the proxy's CA into the container (untried, more
+invasive), this used dockur/windows's own documented escape hatch:
+binding a local ISO file to `/custom.iso` skips its downloader entirely
+and lets it auto-detect the Windows version from the ISO's own contents.
+`WindowsSandboxProvider` does exactly this when `isoOrVersion` is a local
+file path (see its doc comment in `sandbox.hpp`); a bare `VERSION` string
+is still supported for environments without this proxy's specific
+trust-store gap.
+
+### A real end-to-end run, in this environment
+
+```
+docker run -d --name win2003test -e KVM=N -e RAM_SIZE=1G -e DISK_SIZE=8G \
+    -p 18006:8006 -p 13389:3389 --device=/dev/net/tun --cap-add NET_ADMIN \
+    --stop-timeout 30 \
+    -v /home/user/win2003_test/storage:/storage \
+    -v /home/user/win2003_test/win2003.iso:/custom.iso \
+    docker.io/dockurr/windows
+```
+
+Real output, confirming every claim above from source is what actually
+happens: `Detected: Windows Server 2003 Standard` (ISO auto-detection),
+`Warning: KVM acceleration is disabled...` (the `checkKvm()` downgrade
+this document's earlier revision already found), and a real
+`qemu-system-x86_64` process with exactly the TCG CPU model
+`configureTcgAmd64WindowsModel()` computes for an Intel host running a
+Windows guest:
+
+```
+-accel tcg,thread=multi -cpu Skylake-Client-v4,l3-cache=on,+hypervisor,vmx=off,-pcid,-tsc-deadline,-invpcid,-spec-ctrl,-xsavec,-xsaves,check
+```
+
+Disk usage (`/storage/data.img`, sparse) grew steadily during the
+text-mode setup phase (650 MB → 1.1 GB over several minutes), and the
+guest's own BIOS-level boot went from `Boot failed: not a bootable disk`
+(first boot, installing from CD) to a successful `Booting from Hard
+Disk...` on its post-text-mode-setup reboot — real, independent
+confirmation the install is actually progressing, not just that a QEMU
+process is running.
+
+### A real false-positive readiness check, caught before it shipped
+
+The obvious way to detect "is the guest up" is a TCP connect to the
+published RDP port. Tested directly, that check reported success after
+**0 seconds** — before Windows was anywhere near installed. Root cause:
+dockur/windows's own container-side port-forwarding proxy accepts TCP
+connections on 3389 immediately at container start, regardless of whether
+anything inside the guest is listening yet. A plain-connect readiness
+check would have been actively wrong, not just imprecise.
+
+Fixed by checking at the protocol level instead: `rdpHandshakeOk()`
+(`windows_sandbox_provider.cpp`) sends a real RDP X.224 Connection
+Request TPDU (the same first packet `mstsc`/`xfreerdp` send) and only
+treats a real X.224 Connection Confirm response (`0xD0` at the expected
+offset) as "up." Verified this correctly reports "not up" throughout the
+real install above (`Connection reset by peer` — nothing is listening on
+3389 inside the guest yet) rather than the false "up" a bare connect gave
+immediately.
+
+### `WindowsSandboxProvider`'s honest v1 scope
+
+Booting a real Windows guest under TCG and confirming it's genuinely
+reachable is proven end to end, per above. What isn't built yet: any
+mechanism to deliver a sample into the guest or execute/monitor it there
+— there is no Windows-side equivalent of `sandbox/agent/agent.sh`. RDP
+has no serial-console-style scripting channel the way the Linux provider
+uses; delivering and running a sample would need its own mechanism (RDP
+automation, or dockur/windows's Samba share plus a scheduled task, or its
+documented one-shot `COMMAND` environment variable run at the end of
+install — none implemented yet).
+
+`WindowsSandboxProvider::detonate()` reflects this honestly rather than
+papering over it: **`completed` never becomes `true` in v1**, even on a
+fully successful boot — `error` is what actually distinguishes "the guest
+booted and answered a real RDP handshake, sample execution just isn't
+implemented yet" from a genuine failure (container wouldn't start, or
+never became reachable within the timeout, with the container's own
+recent log lines included for diagnosis).
+
+```
+compass-cli --detonate <sample> --windows-iso <path-or-VERSION> [--timeout <secs>]
+```
+
+`--timeout` defaults to 3600s (one hour) for a Windows guest specifically
+when not passed explicitly — the CLI's general 30s default (fine for the
+much lighter Linux guest boot) would otherwise report "never came up" on
+every unmodified invocation, since a from-scratch install genuinely takes
+on that order under TCG (see the real run above).
+
+`scripts/windows_sandbox_smoke_test.sh` verifies the plumbing (container
+construction, RDP port discovery, the real handshake probe correctly
+reporting "not up yet," clean container teardown) against the real
+`docker.io/dockurr/windows` image with a short timeout — deliberately not
+a full install every run, since that would make the test take as long as
+a real Windows install; the full install-to-real-RDP-handshake path was
+separately verified manually, per above.

@@ -80,4 +80,30 @@ std::unique_ptr<ISandboxProvider> makeMockSandboxProvider();
 /// See docs/SANDBOX.md.
 std::unique_ptr<ISandboxProvider> makeQemuTcgSandboxProvider(const std::string& defaultGuestImage);
 
+/// Windows guest, vendoring/wrapping dockur/windows's actual bootstrap
+/// (via `docker run docker.io/dockurr/windows`) rather than reimplementing
+/// Windows unattended-install automation — see docs/SANDBOX.md. Verified
+/// end to end in this environment: a real Windows Server 2003 install ISO,
+/// booted under TCG (`KVM=N`, this environment's own QEMU accelerator
+/// choice) via that exact container, reaching a real RDP handshake.
+///
+/// v1 scope, honestly limited: this proves the guest boots and becomes
+/// reachable, but does not yet deliver/execute `sample` inside it or
+/// monitor it there — there is no Windows-side equivalent of
+/// sandbox/agent/agent.sh yet (RDP has no serial-console-style scripting
+/// channel the Linux provider uses; delivering and running a sample needs
+/// its own mechanism — see docs/SANDBOX.md's roadmap). detonate() reflects
+/// this honestly: `completed` stays `false` even on a fully successful
+/// boot, with `error` describing exactly how far it got, rather than
+/// claiming a detonation that didn't happen.
+///
+/// `isoOrVersion` is either a local path to a Windows install ISO (bind
+/// mounted as dockur's documented `/custom.iso`) or a dockur/windows
+/// `VERSION` string (e.g. "2003", "10", "11") for it to download itself.
+/// A local ISO is strongly preferred in an environment like this one:
+/// dockur's in-container downloader doesn't trust this environment's
+/// intercepting TLS proxy (confirmed directly, not assumed — see
+/// docs/SANDBOX.md), so a bare VERSION string will fail to download here.
+std::unique_ptr<ISandboxProvider> makeWindowsSandboxProvider(const std::string& isoOrVersion);
+
 } // namespace compass::core

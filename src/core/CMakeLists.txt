@@ -6,6 +6,7 @@ add_library(compass-core STATIC
     src/backend_selection.cpp
     src/mock_sandbox_provider.cpp
     src/qemu_tcg_sandbox_provider.cpp
+    src/windows_sandbox_provider.cpp
     src/annotation_merge.cpp
     src/dominators.cpp
     src/medium_level_il.cpp

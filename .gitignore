@@ -4,3 +4,5 @@ build/
 *.so
 compile_commands.json
 .cache/
+*.iso
+*.qcow2

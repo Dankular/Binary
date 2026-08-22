@@ -33,6 +33,7 @@ void printUsage(const char* argv0) {
               << "  " << argv0 << " --apply-signatures <path> <binary>\n"
               << "  " << argv0 << " --info <binary>\n"
               << "  " << argv0 << " --detonate <sample> [--guest-image <qcow2>] [--timeout <secs>] [--merge-annotations]\n"
+              << "  " << argv0 << " --detonate <sample> --windows-iso <path-or-VERSION> [--timeout <secs>]\n"
               << "  " << argv0 << " --function <name> --decompile <binary>\n"
               << "  " << argv0 << " --debug <path> [--debug-arg <arg>]... [--break <symbol>]... [--timeout <secs>]\n";
 }
@@ -127,9 +128,10 @@ int main(int argc, char** argv) {
     bool listFunctions = false, showInfo = false, showIL = false, showMLIL = false, showMLILSSA = false,
          showHLIL = false, listPasses = false, showDecompile = false, mergeAnnotations = false;
     std::string functionName, path, exportSignaturesPath, applySignaturesPath;
-    std::string detonatePath, guestImagePath;
+    std::string detonatePath, guestImagePath, windowsIsoOrVersion;
     std::string debugPath;
     int timeoutSeconds = 30;
+    bool timeoutExplicit = false;
     std::vector<std::string> pluginPaths, passNames, debugArgs, breakSymbols;
     for (std::size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--list-functions") listFunctions = true;
@@ -137,7 +139,11 @@ int main(int argc, char** argv) {
         else if (args[i] == "--il") showIL = true;
         else if (args[i] == "--detonate" && i + 1 < args.size()) detonatePath = args[++i];
         else if (args[i] == "--guest-image" && i + 1 < args.size()) guestImagePath = args[++i];
-        else if (args[i] == "--timeout" && i + 1 < args.size()) timeoutSeconds = std::stoi(args[++i]);
+        else if (args[i] == "--windows-iso" && i + 1 < args.size()) windowsIsoOrVersion = args[++i];
+        else if (args[i] == "--timeout" && i + 1 < args.size()) {
+            timeoutSeconds = std::stoi(args[++i]);
+            timeoutExplicit = true;
+        }
         else if (args[i] == "--merge-annotations") mergeAnnotations = true;
         else if (args[i] == "--mlil") showMLIL = true;
         else if (args[i] == "--mlil-ssa") showMLILSSA = true;
@@ -178,11 +184,24 @@ int main(int argc, char** argv) {
     }
 
     if (!detonatePath.empty()) {
-        if (guestImagePath.empty()) {
-            const char* cacheEnv = std::getenv("COMPASS_SANDBOX_GUEST_IMAGE");
-            guestImagePath = cacheEnv ? cacheEnv : "./.cache/debian-12-nocloud-amd64.qcow2";
+        std::unique_ptr<ISandboxProvider> provider;
+        if (!windowsIsoOrVersion.empty()) {
+            provider = makeWindowsSandboxProvider(windowsIsoOrVersion);
+            // A from-scratch Windows install under TCG genuinely takes on
+            // the order of an hour (verified directly — see
+            // docs/SANDBOX.md) — the CLI's general 30s default (fine for
+            // the Linux provider's much lighter boot) would silently
+            // report "never came up" on every unmodified invocation
+            // otherwise. Only applied when the caller didn't pass
+            // --timeout explicitly.
+            if (!timeoutExplicit) timeoutSeconds = 3600;
+        } else {
+            if (guestImagePath.empty()) {
+                const char* cacheEnv = std::getenv("COMPASS_SANDBOX_GUEST_IMAGE");
+                guestImagePath = cacheEnv ? cacheEnv : "./.cache/debian-12-nocloud-amd64.qcow2";
+            }
+            provider = makeQemuTcgSandboxProvider(guestImagePath);
         }
-        auto provider = makeQemuTcgSandboxProvider(guestImagePath);
         SandboxProfile profile;
         profile.timeoutSeconds = static_cast<std::uint32_t>(timeoutSeconds);
         auto report = provider->detonate(detonatePath, profile);

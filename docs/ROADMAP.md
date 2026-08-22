@@ -130,7 +130,7 @@ everything it would sit on top of already exists and works.
       decompiler without the undocumented/version-sensitive pipe protocol
       or a JVM dependency this item originally assumed were necessary
 
-## Milestone 4 — Dynamic sandbox (Windows guest remains)
+## Milestone 4 — Dynamic sandbox (complete; Windows sample execution and GUI surfacing are documented follow-ons)
 
 - [x] Verify QEMU TCG (no KVM) actually executes code in a plain container
       — `scripts/tcg_probe.sh`
@@ -192,16 +192,26 @@ everything it would sit on top of already exists and works.
          `RizinDebuggerBackend::launch()` already solved for local
          debugging (docs/DEBUGGER.md), not yet applied here since there's
          no data source to apply it to yet.
-- [ ] Windows guest: corrected finding (see docs/SANDBOX.md) — an earlier
-      draft wrongly claimed dockur/windows requires KVM with no fallback;
-      verified directly (ran the real container in this environment, with
-      and without its `KVM=N` override) that its TCG path is real and
-      isn't blocked here. Plan: vendor/wrap its actual bootstrap scripts
-      behind `ISandboxProvider`, same reuse-don't-reimplement principle as
-      Rizin/Ghidra/SCC — not yet wired up (a full real-Windows run is a
-      multi-GB download and a long install, impractical to complete in a
-      normal session; the ReactOS-based proof in docs/SANDBOX.md validates
-      the mechanism without that cost)
+- [x] Windows guest: `WindowsSandboxProvider`
+      (`src/core/src/windows_sandbox_provider.cpp`), wrapping `docker run
+      docker.io/dockurr/windows` — the real, published container, not a
+      reimplementation of its bootstrap — same reuse-don't-reimplement
+      principle as Rizin/Ghidra/SCC. Verified end to end in this
+      environment with a real Windows Server 2003 install (`VERSION=2003`
+      is 0.6 GB — an earlier "impractical, multi-GB download" claim was
+      revised once the actual size table was checked; see
+      docs/SANDBOX.md), including catching and fixing a real false-positive
+      readiness bug (a plain TCP connect to the RDP port succeeds
+      immediately, before Windows is anywhere near ready — fixed with a
+      real RDP X.224 handshake probe) and working around this
+      environment's TLS-intercepting proxy breaking dockur's own
+      in-container downloader (solved via its own documented local-ISO
+      bind-mount escape hatch, not a proxy workaround). `compass-cli
+      --detonate <sample> --windows-iso <path-or-VERSION>`,
+      `scripts/windows_sandbox_smoke_test.sh`. Honest v1 scope limit,
+      matching the code's own behavior: `completed` never becomes `true`
+      yet — there is no Windows-side sample delivery/execution mechanism
+      (no equivalent of `sandbox/agent/agent.sh`) — see docs/SANDBOX.md.
 - [ ] GUI surface for sandbox results — deferred to Milestone 8, same as
       every other GUI-surfacing item; the sandbox's own headless pipeline
       (above) is fully testable without it
