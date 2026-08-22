@@ -419,3 +419,14 @@ Verified against real captured data end to end — `scripts/sandbox_detonate_tes
 parsing/pathing bugs this caught (a `std::regex_match` rejecting every line
 over a trailing `\r`, and `qemu-img`'s relative-backing-file resolution
 being relative to the overlay's directory rather than the caller's cwd).
+
+`mergeDetonationReport()` (`src/core/include/compass/core/annotation_merge.hpp`)
+is the "annotations on the existing `Binary`/`Function` model" piece
+referenced above — see [ANNOTATIONS.md](ANNOTATIONS.md) for what it
+attaches where, and two real, honestly-scoped gaps it surfaced: no
+current provider populates per-call-site or per-block addresses (only
+process-level file/network events reach the model today), and even once
+one does, a PIE sample's guest-runtime addresses would need the same
+ASLR-base normalization the debugger already solved (see DEBUGGER.md) —
+neither blocks the merge logic itself, which is implemented and unit
+tested against hand-built data with real addresses.

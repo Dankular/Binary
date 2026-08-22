@@ -130,7 +130,7 @@ everything it would sit on top of already exists and works.
       decompiler without the undocumented/version-sensitive pipe protocol
       or a JVM dependency this item originally assumed were necessary
 
-## Milestone 4 — Dynamic sandbox (annotation merge up next)
+## Milestone 4 — Dynamic sandbox (Windows guest remains)
 
 - [x] Verify QEMU TCG (no KVM) actually executes code in a plain container
       — `scripts/tcg_probe.sh`
@@ -171,8 +171,27 @@ everything it would sit on top of already exists and works.
          path relative to the *overlay's* directory, not the caller's
          cwd — broke the moment the overlay moved to a `/tmp` work dir.
          Fixed by canonicalizing the guest image path before use.
-- [ ] Annotation merge: dynamic coverage, syscalls, network IOCs onto the
-      static model
+- [x] Annotation merge: dynamic coverage, syscalls, network IOCs onto the
+      static model — `mergeDetonationReport()`
+      (`src/core/include/compass/core/annotation_merge.hpp`),
+      `compass-cli --detonate <sample> --merge-annotations`. See
+      docs/ANNOTATIONS.md for the full design, including two real,
+      honestly-scoped gaps this surfaced rather than papered over:
+      1. No current provider populates `SyscallEvent::callSite` or
+         `executedBlocks` (strace, `QemuTcgSandboxProvider`'s data source,
+         reports syscall arguments, not the guest instruction pointer at
+         the call) — the address-attribution merge logic is implemented
+         and proven correct against hand-built data with real addresses
+         (`tests/annotation_merge_test.cpp`) rather than left unbuilt
+         until a provider exists to feed it; end to end today it merges
+         file/network events only, verified against `/tmp/detonate_test`'s
+         known behavior.
+      2. Even once populated, those fields' addresses are the guest's
+         *runtime* addresses — correlating them against a statically-loaded
+         PIE binary needs the same ASLR-base normalization
+         `RizinDebuggerBackend::launch()` already solved for local
+         debugging (docs/DEBUGGER.md), not yet applied here since there's
+         no data source to apply it to yet.
 - [ ] Windows guest: corrected finding (see docs/SANDBOX.md) — an earlier
       draft wrongly claimed dockur/windows requires KVM with no fallback;
       verified directly (ran the real container in this environment, with

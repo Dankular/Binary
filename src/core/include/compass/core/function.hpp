@@ -44,6 +44,13 @@ struct Function {
         }
         return nullptr;
     }
+
+    BasicBlock* blockAt(Address addr) {
+        for (auto& bb : basicBlocks) {
+            if (addr >= bb.start && addr < bb.end) return &bb;
+        }
+        return nullptr;
+    }
 };
 
 } // namespace compass::core

@@ -113,7 +113,19 @@ Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
       `DetonationReport` (syscalls, file events, network events) —
       `compass-cli --detonate <sample>`, verified end to end against a real
       fixture (`scripts/sandbox_detonate_test.sh`) — see
-      [docs/SANDBOX.md](docs/SANDBOX.md)
+      [docs/SANDBOX.md](docs/SANDBOX.md). Findings merge onto the static
+      `Binary`/`Function` model as annotations
+      (`--merge-annotations`) — see [docs/ANNOTATIONS.md](docs/ANNOTATIONS.md)
+- [x] Decompiler: `IAnalysisBackend::decompile()` over rz-ghidra (a
+      self-contained port of Ghidra's C++ decompiler, no JVM) —
+      `compass-cli --function <name> --decompile <binary>`, verified
+      against real output (`scripts/decompile_smoke_test.sh`) — see
+      [docs/DECOMPILER.md](docs/DECOMPILER.md)
+- [x] Debugger: `IDebuggerBackend` over RzDebug (native ptrace) —
+      `compass-cli --debug <path> --break <symbol>`, verified end to end
+      against a real PIE fixture including two real bugs caught along the
+      way (`scripts/debugger_smoke_test.sh`) — see
+      [docs/DEBUGGER.md](docs/DEBUGGER.md)
 - [ ] Everything else in the feature table below — tracked in the roadmap.
 
 ## Building
@@ -192,7 +204,7 @@ Status legend: ✅ implemented · 🚧 in progress / partial · 📋 designed, n
 | Single sign-on (SSO) | ✅ | — | Project server milestone (OIDC) |
 | Access control & auditing | ✅ | — | Project server milestone |
 | Collaborative analysis | ✅ | — | Project server milestone (CRDT-based merge, like BN's) |
-| Sandbox / dynamic detonation (any.run-style)* | — (not a BN feature) | 🚧 | See [docs/SANDBOX.md](docs/SANDBOX.md) — QEMU **TCG** (no `/dev/kvm` needed). `QemuTcgSandboxProvider` detonates a sample in a disposable overlay and returns a real syscall/file/network `DetonationReport` (`compass-cli --detonate`), verified end to end (`scripts/sandbox_detonate_test.sh`). Remaining work: merging the report onto the static `Binary`/`Function` model as annotations, and a Windows guest (verified feasible under TCG via dockur/windows's real `KVM=N` path, confirmed by running it directly — an earlier draft of this claim was wrong — plan is to vendor its bootstrap, not yet wired up) |
+| Sandbox / dynamic detonation (any.run-style)* | — (not a BN feature) | 🚧 | See [docs/SANDBOX.md](docs/SANDBOX.md) — QEMU **TCG** (no `/dev/kvm` needed). `QemuTcgSandboxProvider` detonates a sample in a disposable overlay and returns a real syscall/file/network `DetonationReport` (`compass-cli --detonate`), verified end to end (`scripts/sandbox_detonate_test.sh`). Findings merge onto the static `Binary`/`Function` model as annotations (`--merge-annotations`, see [docs/ANNOTATIONS.md](docs/ANNOTATIONS.md)) — file/network events today; per-block/per-call-site attribution is implemented and unit tested but has no live data source yet (strace doesn't report call sites). Remaining work: a Windows guest (verified feasible under TCG via dockur/windows's real `KVM=N` path, confirmed by running it directly — an earlier draft of this claim was wrong — plan is to vendor its bootstrap, not yet wired up) |
 
 \* Added per project owner's request — not part of Binary Ninja's feature set, but a natural extension for a modern RE platform.
 
@@ -201,6 +213,7 @@ Status legend: ✅ implemented · 🚧 in progress / partial · 📋 designed, n
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system design, IL stack, backend interfaces
 - [docs/ROADMAP.md](docs/ROADMAP.md) — milestones, sequencing, and what "done" means for each
 - [docs/SANDBOX.md](docs/SANDBOX.md) — dynamic analysis sandbox design
+- [docs/ANNOTATIONS.md](docs/ANNOTATIONS.md) — merging dynamic-analysis findings onto the static model
 - [docs/DECOMPILER.md](docs/DECOMPILER.md) — decompiler design (rz-ghidra integration)
 - [docs/DEBUGGER.md](docs/DEBUGGER.md) — debugger design (RzDebug integration)
 - [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) — licenses of everything we build on

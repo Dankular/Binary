@@ -2,6 +2,7 @@
 // core engine works end-to-end without any GUI (see docs/ROADMAP.md
 // Milestone 0), and to give the smoke test something to assert against.
 
+#include "compass/core/annotation_merge.hpp"
 #include "compass/core/backend.hpp"
 #include "compass/core/debugger.hpp"
 #include "compass/core/il/low_level_il.hpp"
@@ -31,7 +32,7 @@ void printUsage(const char* argv0) {
               << "  " << argv0 << " --export-signatures <path> <binary>\n"
               << "  " << argv0 << " --apply-signatures <path> <binary>\n"
               << "  " << argv0 << " --info <binary>\n"
-              << "  " << argv0 << " --detonate <sample> [--guest-image <qcow2>] [--timeout <secs>]\n"
+              << "  " << argv0 << " --detonate <sample> [--guest-image <qcow2>] [--timeout <secs>] [--merge-annotations]\n"
               << "  " << argv0 << " --function <name> --decompile <binary>\n"
               << "  " << argv0 << " --debug <path> [--debug-arg <arg>]... [--break <symbol>]... [--timeout <secs>]\n";
 }
@@ -124,7 +125,7 @@ int main(int argc, char** argv) {
     }
 
     bool listFunctions = false, showInfo = false, showIL = false, showMLIL = false, showMLILSSA = false,
-         showHLIL = false, listPasses = false, showDecompile = false;
+         showHLIL = false, listPasses = false, showDecompile = false, mergeAnnotations = false;
     std::string functionName, path, exportSignaturesPath, applySignaturesPath;
     std::string detonatePath, guestImagePath;
     std::string debugPath;
@@ -137,6 +138,7 @@ int main(int argc, char** argv) {
         else if (args[i] == "--detonate" && i + 1 < args.size()) detonatePath = args[++i];
         else if (args[i] == "--guest-image" && i + 1 < args.size()) guestImagePath = args[++i];
         else if (args[i] == "--timeout" && i + 1 < args.size()) timeoutSeconds = std::stoi(args[++i]);
+        else if (args[i] == "--merge-annotations") mergeAnnotations = true;
         else if (args[i] == "--mlil") showMLIL = true;
         else if (args[i] == "--mlil-ssa") showMLILSSA = true;
         else if (args[i] == "--hlil") showHLIL = true;
@@ -185,6 +187,33 @@ int main(int argc, char** argv) {
         profile.timeoutSeconds = static_cast<std::uint32_t>(timeoutSeconds);
         auto report = provider->detonate(detonatePath, profile);
         printDetonationReport(report);
+
+        if (mergeAnnotations) {
+            auto backend = makeDefaultAnalysisBackend();
+            if (!backend->load(detonatePath)) {
+                std::cerr << "warning: couldn't statically load " << detonatePath
+                          << " for annotation merge: " << backend->lastError() << "\n";
+            } else {
+                Binary bin = backend->binary(); // copy — free to mutate, backend keeps its own
+                mergeDetonationReport(bin, report);
+                std::cout << "\n-- merged annotations --\n";
+                for (auto& a : bin.annotations) {
+                    std::cout << "[binary] " << a << "\n";
+                }
+                for (auto& fn : bin.functions) {
+                    for (auto& a : fn.annotations) {
+                        std::cout << "[" << fn.name << "] " << a << "\n";
+                    }
+                    for (auto& bb : fn.basicBlocks) {
+                        for (auto& a : bb.annotations) {
+                            std::cout << "[" << fn.name << " @ 0x" << std::hex << bb.start << std::dec
+                                       << "] " << a << "\n";
+                        }
+                    }
+                }
+            }
+        }
+
         return report.completed ? 0 : 1;
     }
 

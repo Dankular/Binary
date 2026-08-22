@@ -35,6 +35,14 @@ struct Binary {
     std::vector<Symbol> symbols;
     std::vector<Function> functions;
 
+    /// Free-form findings attributed to the binary as a whole, not any one
+    /// function/block — e.g. dynamic-analysis observations (files touched,
+    /// network destinations contacted) that a sandbox run's DetonationReport
+    /// doesn't attribute to a specific call site. Same deliberately-simple
+    /// design as Function::annotations (see there). See
+    /// docs/ANNOTATIONS.md and annotation_merge.hpp.
+    std::vector<std::string> annotations;
+
     /// Exact match first; falls back to matching after stripping common
     /// backend name prefixes (radare2/Rizin prefix discovered functions
     /// with "sym.", "dbg." when debug info is present, "sym.imp." for
@@ -62,6 +70,22 @@ struct Binary {
     const Function* functionAt(Address addr) const {
         for (const auto& f : functions) {
             if (f.entry == addr) return &f;
+        }
+        return nullptr;
+    }
+
+    /// Finds the function whose basic blocks contain `addr` — unlike
+    /// functionAt(), `addr` doesn't need to be a function's entry point.
+    const Function* functionContaining(Address addr) const {
+        for (const auto& f : functions) {
+            if (f.blockAt(addr)) return &f;
+        }
+        return nullptr;
+    }
+
+    Function* functionContaining(Address addr) {
+        for (auto& f : functions) {
+            if (f.blockAt(addr)) return &f;
         }
         return nullptr;
     }
