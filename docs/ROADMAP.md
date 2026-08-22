@@ -99,15 +99,38 @@ everything it would sit on top of already exists and works.
       stripped binary, not a same-offset coincidence — for both backends
       (`scripts/signature_smoke_test.sh`)
 
-## Milestone 3 — Decompiler (up next)
+## Milestone 3 — Decompiler
 
-- [ ] `GhidraDecompilerBackend`: headless pipe integration with Ghidra's
-      native `decompile` binary
-- [ ] p-code → MLIL translation
-- [ ] Interim: `r2dec`/`r2ghidra` text-output fallback view while the above
-      is built
+- [x] `IAnalysisBackend::decompile()`, implemented by `RizinBackend` over
+      rz-ghidra — a self-contained port of Ghidra's C++ decompiler (no
+      JVM/full Ghidra install, no undocumented pipe protocol to
+      reverse-engineer — the original `GhidraDecompilerBackend` plan
+      below), reused rather than reimplemented per this project's
+      standing principle. `scripts/build_rz_ghidra.sh` builds/installs it;
+      `compass-cli --function <name> --decompile <binary>`. Verified end
+      to end — `scripts/decompile_smoke_test.sh` — asserting the
+      decompiled text for a real `add()` fixture actually contains its
+      parameters, an addition, and a return, not just that the call
+      succeeded. Real bug found and fixed: `rz_core_new()` doesn't dlopen
+      `dir.plugins` itself (only `rz_core_loadlibs_init()` does, which
+      sets up the loader without running it) — a dlopen'd plugin like
+      rz-ghidra silently never loaded until `rz_core_loadlibs(core,
+      RZ_CORE_LOADLIBS_ALL)` was added explicitly; see docs/DECOMPILER.md.
+- [x] Interim: real Ghidra-decompiler text-output view (rz-ghidra) — done
+      as above, ahead of and instead of a hand-rolled `r2dec`/`r2ghidra`
+      text shim
+- [ ] p-code → MLIL translation — deferred, not attempted in this pass;
+      `pdgj`'s per-token `annotations` (address/syntax-class/variable
+      identity per span) already returned by the current integration are
+      exactly what this would be built on. See docs/DECOMPILER.md's scope
+      note for why this is real, separate work rather than a quick
+      follow-on to the text-output integration above.
+- [ ] `GhidraDecompilerBackend` (full Ghidra pipe integration, superseded)
+      — no longer planned: rz-ghidra above delivers the same underlying
+      decompiler without the undocumented/version-sensitive pipe protocol
+      or a JVM dependency this item originally assumed were necessary
 
-## Milestone 4 — Dynamic sandbox (up next)
+## Milestone 4 — Dynamic sandbox (annotation merge up next)
 
 - [x] Verify QEMU TCG (no KVM) actually executes code in a plain container
       — `scripts/tcg_probe.sh`
@@ -171,8 +194,35 @@ register/memory state — none of it needs a display), which is why this
 comes before the GUI despite being numbered after it in earlier drafts of
 this roadmap.
 
-- [ ] `IDebuggerBackend` over `r_debug`/`RzDebug`
-- [ ] Local ptrace debugging (Linux), then remote (gdbserver/WinDbg protocol)
+- [x] `IDebuggerBackend` over `RzDebug` —
+      `src/core/include/compass/core/debugger.hpp` /
+      `src/core/src/rizin_debugger_backend.cpp`. Rizin-only (radare2's
+      `RDebug` is a structurally separate subsystem, same divergence
+      already documented for signature matching), opened in-process via a
+      `dbg://` core — the exact mechanism `rizin -d` uses.
+- [x] Local ptrace debugging (Linux) — `compass-cli --debug <path>
+      [--break <symbol>]... [--timeout <secs>]`. Verified end to end
+      against a real dynamically-linked PIE fixture (deliberately not
+      `-no-pie`) — `scripts/debugger_smoke_test.sh` — asserting a
+      breakpoint stop with the correct call-convention register args, a
+      clean exit with the correct real exit code, and a forced kill on
+      timeout that leaves no orphaned process behind. Two real bugs found
+      and fixed getting there (full detail in docs/DEBUGGER.md):
+      1. A PIE target ran to completion, unimpeded, before `launch()`
+         even returned — two setup calls `rizin -d` makes
+         (`rz_debug_use()`, `rz_debug_get_baddr()` before
+         `rz_core_bin_load()`) were missing; a non-PIE fixture happened to
+         work without them (fixed load address needs no resolution),
+         which is what let this ship past the first fixture tested.
+      2. Exit codes were silently wrong by a factor of 256 (`42` reported
+         as `10752`) — `PTRACE_GETEVENTMSG`'s exit message is the raw
+         `wait(2)` status word and needs `WEXITSTATUS()` applied, which
+         the code wasn't doing; caught only because the smoke test
+         asserted the fixture's *actual* exit code rather than just
+         "an exit happened."
+- [ ] Remote debugging (gdbserver/WinDbg protocol) — deferred, not
+      attempted in this pass; `RzDebug` already has backends for both, see
+      docs/DEBUGGER.md's scope note
 - [ ] GUI breakpoint/register/memory views — deferred to Milestone 8
 
 ## Milestone 6 — Project management & collaboration

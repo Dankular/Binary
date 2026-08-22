@@ -6,12 +6,13 @@ under an OSI-approved license.
 
 > **Status: early foundation.** This repository currently contains a headless
 > core engine — file loading → disassembly → CFG → a full LLIL/MLIL(+SSA)/HLIL
-> IL stack, a type system v1, and a working dynamic-analysis sandbox —
-> validated across x86-64/ARM64/ARM32/MIPS and two interchangeable analysis backends
-> (Rizin, radare2), plus the architecture and roadmap for everything else.
-> It is **not** feature-complete, and claiming otherwise would be dishonest —
-> Binary Ninja represents years of dedicated engineering. There is no GUI,
-> no decompiler, no debugger, and no plugin API yet. See
+> IL stack, a type system v1, a plugin API, a working dynamic-analysis
+> sandbox, a Ghidra-backed decompiler, and a local ptrace debugger —
+> validated across x86-64/ARM64/ARM32/MIPS and two interchangeable analysis
+> backends (Rizin, radare2), plus the architecture and roadmap for everything
+> else. It is **not** feature-complete, and claiming otherwise would be
+> dishonest — Binary Ninja represents years of dedicated engineering. There is
+> no GUI, no remote debugging, and no project management yet. See
 > [ROADMAP.md](docs/ROADMAP.md) for what's real today vs. planned.
 
 ## Why "Compass" and not "Binary Ninja"?
@@ -34,17 +35,25 @@ monolithic reimplementation:
   target and used automatically when available; radare2 (`libr`) is a
   fully-functional fallback, since Rizin isn't packaged for common distros
   yet (`scripts/build_rizin.sh` builds it from source).
-- **Decompiler**: Ghidra's C++ decompiler core (`decompile`/Sleigh), driven
-  headless via its native pipe protocol, feeding our own IL rather than
-  Ghidra's Java UI. Apache-2.0.
+- **Decompiler**: [rz-ghidra](https://github.com/rizinorg/rz-ghidra) — a
+  self-contained port of Ghidra's C++ decompiler (no JVM, no full Ghidra
+  install) that Rizin dlopen's as a plugin, driven via
+  `IAnalysisBackend::decompile()`. LGPL-3.0. See
+  [docs/DECOMPILER.md](docs/DECOMPILER.md).
+- **Debugger**: RzDebug (native ptrace on Linux today), driven via
+  `IDebuggerBackend`. See [docs/DEBUGGER.md](docs/DEBUGGER.md).
 - **Everything above that line — the IL stack (LLIL/MLIL/HLIL-equivalent),
   type system, plugin API, workflows engine, project management, GUI — is new
   code written for this project.**
 
-Because both backends are hidden behind an `IAnalysisBackend` /
-`IDecompilerBackend` interface (see `src/core/include/compass/core/backend.hpp`),
-either can be swapped, run side-by-side per-architecture, or replaced entirely
-without touching the IL/UI layers above them.
+Because both analysis backends are hidden behind an `IAnalysisBackend`
+interface (see `src/core/include/compass/core/backend.hpp`), either can be
+swapped, run side-by-side per-architecture, or replaced entirely without
+touching the IL/UI layers above them. `decompile()` lives on that same
+interface (Rizin-only today, see docs/DECOMPILER.md); the debugger and
+sandbox are separate interfaces (`IDebuggerBackend`, `ISandboxProvider`) with
+their own real implementations, following the same one-narrow-interface
+pattern.
 
 Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -148,6 +157,9 @@ Run the tests:
 ./scripts/tcg_probe.sh             # sandbox groundwork: QEMU TCG works with no /dev/kvm
 ./scripts/linux_guest_probe.sh     # sandbox groundwork: real guest boot + serial control
 ./scripts/sandbox_detonate_test.sh # sandbox: real end-to-end detonation, asserts on captured syscalls/files/network
+./scripts/build_rz_ghidra.sh       # installs rz-ghidra (Ghidra's C++ decompiler, self-contained) as a Rizin plugin
+./scripts/decompile_smoke_test.sh  # decompiler: real Ghidra-backed decompile, asserts on the actual output
+./scripts/debugger_smoke_test.sh   # debugger: real ptrace session against a PIE fixture, asserts breakpoint/exit/timeout behavior
 ```
 
 ## Feature parity tracker
@@ -159,13 +171,13 @@ Status legend: ✅ implemented · 🚧 in progress / partial · 📋 designed, n
 | Included installers | 4 platforms | 📋 | CI-built packages (deb/rpm/AppImage/macOS/Windows) once GUI exists |
 | Multi-threaded analysis | ✅ | 🚧 | `librz`/`libr` analysis is already parallelizable per-function; our job scheduler is planned |
 | Disassembler | ✅ | ✅ (x86-64, ARM64, ARM32, MIPS) | Rizin (primary)/radare2 (fallback) `rz_asm`/`r_asm`, Capstone under the hood |
-| Decompiler | ✅ | 📋 | Ghidra decompiler core (headless), or `r2ghidra`/`r2dec` as interim |
+| Decompiler | ✅ | ✅ (text output; not yet fused with our own IL) | rz-ghidra — a self-contained port of Ghidra's C++ decompiler, no JVM — via `IAnalysisBackend::decompile()` (Rizin-only), `compass-cli --function <name> --decompile`; verified against real output (`scripts/decompile_smoke_test.sh`). p-code → our own MLIL/HLIL translation still planned, see [docs/DECOMPILER.md](docs/DECOMPILER.md) |
 | Decompilation architectures | 18+ | 🚧 (4 validated today) | Inherited from Ghidra Sleigh + Rizin arch plugins; enabled incrementally |
 | Community architectures (extension manager) | ✅ | — | Depends on plugin manager (below) |
 | File formats | 9+ | 🚧 (ELF, PE64, raw validated; Mach-O not yet) | `rz_bin`/`r_bin` already parses ELF/PE/Mach-O/raw/etc.; exposed via our loader today |
 | Hex editor | ✅ | — | Milestone 8 (Qt GUI — deliberately last, see docs/ROADMAP.md: it's the one milestone needing a real display to test) |
 | Type libraries/archives/signatures | ✅ | 🚧 | Type system v1 implemented (primitives/pointers/arrays/structs/unions + width-based propagation onto stack vars); function signature matching (FLIRT/zignatures) implemented and verified per-backend — see below; type *libraries/archives* (sharing struct/typedef definitions across projects, Ghidra data type archives) still planned |
-| Debugger | ✅ | — | `rz_debug`/`r_debug` backends (ptrace/gdbserver/WinDbg) behind `IDebuggerBackend` |
+| Debugger | ✅ | ✅ (local ptrace; remote planned) | `IDebuggerBackend` over RzDebug — `compass-cli --debug <path> --break <symbol>`; verified end to end against a real PIE fixture, including two real bugs caught along the way (`scripts/debugger_smoke_test.sh`), see [docs/DEBUGGER.md](docs/DEBUGGER.md). gdbserver/WinDbg remote debugging not yet wired up |
 | "Sidekick"-capable (AI assist) | ✅ (partial purchase) | — | Optional plugin calling any LLM API; no vendor lock-in |
 | Full BNIL introspection | ✅ | 🚧 | LLIL, MLIL (+ real SSA), and HLIL (dominator-based if/else + loop structuring) all implemented; MLIL-SSA-based HLIL construction and richer type propagation are the natural next steps |
 | Plugin API | ✅ | 🚧 | C++ core API (dlopen-based, `IAnalysisPass`/`PassRegistry`/`PluginManager`) + Python bindings (pybind11) both implemented and validated end-to-end; a stable *cross-compiler* ABI (vs. today's same-compiler-toolchain boundary) is real, separate future work |
@@ -189,11 +201,15 @@ Status legend: ✅ implemented · 🚧 in progress / partial · 📋 designed, n
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system design, IL stack, backend interfaces
 - [docs/ROADMAP.md](docs/ROADMAP.md) — milestones, sequencing, and what "done" means for each
 - [docs/SANDBOX.md](docs/SANDBOX.md) — dynamic analysis sandbox design
+- [docs/DECOMPILER.md](docs/DECOMPILER.md) — decompiler design (rz-ghidra integration)
+- [docs/DEBUGGER.md](docs/DEBUGGER.md) — debugger design (RzDebug integration)
 - [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) — licenses of everything we build on
 
 ## License
 
 Compass's own code is licensed under [Apache-2.0](LICENSE). It links against
-LGPL-2.1 (radare2/Rizin) and Apache-2.0 (Ghidra decompiler) components as
-dynamically-loaded backends — see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
-for the full picture and what that means for downstream users.
+LGPL-2.1 (radare2/Rizin) components as dynamically-loaded backends, and
+dlopen's rz-ghidra (LGPL-3.0, itself wrapping Ghidra's Apache-2.0 decompiler
+source) as a Rizin plugin — see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the full picture and
+what that means for downstream users.

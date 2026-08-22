@@ -71,6 +71,18 @@ public:
         rz_config_set_b(core_->config, "scr.interactive", false);
         rz_config_set(core_->config, "scr.color", "0");
 
+        // rz_core_new() does NOT dlopen dir.plugins itself (confirmed
+        // directly, not assumed: it only calls rz_core_loadlibs_init(),
+        // which sets up the loader machinery — the actual directory scan
+        // is a separate call the `rizin` CLI's own main() makes that
+        // nothing in rz_core_new()'s path replicates). Without this,
+        // dlopen'd plugins like rz-ghidra (core_ghidra.so) silently never
+        // load — `pdgj` just isn't a recognized command — while plugins
+        // statically compiled into a librz_*.so (e.g. debug_native) work
+        // fine either way, which is what made this easy to miss: decompile()
+        // below depends on it. See docs/DECOMPILER.md.
+        rz_core_loadlibs(core_, RZ_CORE_LOADLIBS_ALL);
+
         if (!rz_core_file_open_load(core_, path.c_str(), 0, RZ_PERM_R, false)) {
             error_ = "failed to open file: " + path;
             return false;
@@ -126,6 +138,30 @@ public:
             }
         }
         return matches;
+    }
+
+    // rz-ghidra (docs/DECOMPILER.md): a self-contained port of Ghidra's C++
+    // decompiler that librz dlopen's as a plugin (see
+    // scripts/build_rz_ghidra.sh) — no Java/full Ghidra install involved.
+    // `pdgj @ <addr>` decompiles the function containing <addr> and
+    // returns {"code": "...", "annotations": [...]}; we only need `code`
+    // for this v1 (see DecompiledFunction's note on scope). If the plugin
+    // isn't installed, `pdgj` isn't a recognized command and runJson finds
+    // no parseable JSON in the output — that's the signal used below to
+    // report a clear "not installed" error rather than an opaque parse
+    // failure.
+    DecompiledFunction decompile(Address entry) override {
+        DecompiledFunction result;
+        auto j = runJson("pdgj @ " + std::to_string(entry));
+        if (!j || !j->contains("code")) {
+            result.success = false;
+            result.error = "rz-ghidra doesn't appear to be installed (pdgj produced no JSON) — "
+                            "see scripts/build_rz_ghidra.sh";
+            return result;
+        }
+        result.success = true;
+        result.code = j->value("code", "");
+        return result;
     }
 
 private:

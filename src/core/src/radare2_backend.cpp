@@ -136,6 +136,16 @@ public:
         return matches;
     }
 
+    // No radare2/r2ghidra integration — decompiler support is scoped to
+    // RizinBackend (rz-ghidra), see backend.hpp's note on decompile() and
+    // docs/DECOMPILER.md.
+    DecompiledFunction decompile(Address) override {
+        DecompiledFunction result;
+        result.success = false;
+        result.error = "decompiler support requires the Rizin backend (see docs/DECOMPILER.md)";
+        return result;
+    }
+
 private:
     RCore* core_ = nullptr;
     Binary binary_;

@@ -16,6 +16,19 @@ struct SignatureMatch {
     std::string matchedName;
 };
 
+/// A single function decompiled to C-like source text — see
+/// IAnalysisBackend::decompile(). v1 scope (see docs/DECOMPILER.md):
+/// backend-rendered text plus its own warning comments, not a structured
+/// AST/p-code translation into Compass's own IL (HLIL already exists and
+/// is a real structuring decompiler in its own right — this is a second,
+/// independent decompiler view backed by Ghidra's, not a replacement for
+/// HLIL and not (yet) fused with it).
+struct DecompiledFunction {
+    bool success = false;
+    std::string error; // set when success == false
+    std::string code;  // C-like decompiled text
+};
+
 /// Everything above this interface (domain model, IL, and eventually the
 /// GUI) is written once against this contract. Today's implementation
 /// (RadareBackend, src/core/src/radare2_backend.cpp) wraps libr; the target
@@ -60,6 +73,16 @@ public:
     /// information, just without requiring the caller to diff binary()
     /// before and after to notice what changed.
     virtual std::vector<SignatureMatch> applySignatures(const std::string& path, std::string& error) = 0;
+
+    /// Decompiles the function at `entry` to C-like source text (Milestone
+    /// 3 — see docs/DECOMPILER.md). Implemented only by RizinBackend today,
+    /// backed by rz-ghidra (a real, self-contained port of Ghidra's C++
+    /// decompiler — no Java/full Ghidra install needed, see
+    /// scripts/build_rz_ghidra.sh). Radare2Backend returns a clear
+    /// unsupported-feature DecompiledFunction rather than attempting a
+    /// parallel radare2/r2ghidra integration — same chosen-primary-backend
+    /// scoping already documented for signature matching.
+    virtual DecompiledFunction decompile(Address entry) = 0;
 };
 
 std::unique_ptr<IAnalysisBackend> makeRadare2Backend();

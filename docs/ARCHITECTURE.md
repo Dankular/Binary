@@ -229,26 +229,27 @@ Both are exactly the value multi-architecture testing was for: a lifter
 validated against one architecture's compiler output will encode that
 architecture's assumptions without knowing it.
 
-## Decompiler integration (planned)
+## Decompiler integration
 
-Ghidra's decompiler (`Decompiler.jar`'s native counterpart, actually a
-standalone C++ binary — `decompile`/`ghidra_decompile` — talking XML over a
-pipe) can run without the Java UI. The plan is a `GhidraDecompilerBackend`
-that: emits a minimal Sleigh-compatible function description from our LLIL,
-pipes it through `decompile`, and parses the returned p-code back into MLIL,
-skipping Ghidra's Java front end and Swing UI entirely. This is real
-integration work (the pipe protocol is undocumented and version-sensitive)
-and is scoped as its own roadmap milestone rather than attempted in this
-pass. Interim fallback while that lands: shell out to `r2dec`/`r2ghidra` for
-a text-only decompilation view.
+See [DECOMPILER.md](DECOMPILER.md) — `IAnalysisBackend::decompile()`,
+implemented by `RizinBackend` over rz-ghidra: a self-contained port of
+Ghidra's C++ decompiler (no JVM, no full Ghidra install) that Rizin
+dlopen's as a plugin. Reuse over reimplementation, same principle as the
+Rizin/radare2 backends themselves — the original plan here (parse Ghidra's
+p-code back into our own MLIL) is real, separate work, tracked as a
+follow-on rather than done in this pass; see DECOMPILER.md's scope note.
 
-## Debugger integration (planned)
+## Debugger integration
 
-`r_debug`/`RzDebug` already wraps ptrace (Linux), a WinDbg-protocol client
-(Windows), and gdbserver/lldb-server (remote). `IDebuggerBackend` will mirror
-`IAnalysisBackend`'s shape: attach/launch, breakpoints, register/memory
-read-write, single-step, mapped onto the same `Function`/`Address` types so
-breakpoints and disassembly share one address space model.
+See [DEBUGGER.md](DEBUGGER.md) — `IDebuggerBackend`, implemented by
+`RizinDebuggerBackend` over RzDebug (native ptrace on Linux today), opened
+in-process via a `dbg://` core — the exact mechanism `rizin -d` uses.
+Mirrors `IAnalysisBackend`'s shape: launch, breakpoints, continue,
+register/memory read, mapped onto the same `Address` type. Two real bugs
+were found and fixed getting this from "works on a toy fixture" to "works
+on a real PIE binary" — see DEBUGGER.md for both (a PIE target running to
+completion unimpeded because two rizin.c-only setup calls were missing,
+and an exit code silently corrupted by a missing `WEXITSTATUS` shift).
 
 ## Plugin API (planned)
 
