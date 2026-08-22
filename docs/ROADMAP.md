@@ -200,7 +200,10 @@ everything it would sit on top of already exists and works.
       environment with a real Windows Server 2003 install (`VERSION=2003`
       is 0.6 GB — an earlier "impractical, multi-GB download" claim was
       revised once the actual size table was checked; see
-      docs/SANDBOX.md), including catching and fixing a real false-positive
+      docs/SANDBOX.md) — watched to completion via a real screenshot of
+      the actual setup screen (not inferred from indirect signals), full
+      install to a real RDP handshake in 1398s (~23 minutes), including
+      catching and fixing a real false-positive
       readiness bug (a plain TCP connect to the RDP port succeeds
       immediately, before Windows is anywhere near ready — fixed with a
       real RDP X.224 handshake probe) and working around this

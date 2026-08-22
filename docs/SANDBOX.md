@@ -375,6 +375,24 @@ Disk...` on its post-text-mode-setup reboot — real, independent
 confirmation the install is actually progressing, not just that a QEMU
 process is running.
 
+**Full outcome, not inferred — watched to completion**: rather than trust
+indirect signals (disk growth, a bare TCP connect to the RDP port — see
+below for why that one is actively misleading), the actual screen was
+captured via a headless Chromium/Playwright session driving the
+container's own noVNC web viewer (`http://127.0.0.1:8006/`). This showed
+genuine setup progress through to the end: `Installing Windows —
+Registering components` (`~10 minutes` remaining, per Windows' own
+estimate), then `Finalizing installation — Saving settings` (`~4 minutes`
+remaining), then a third BIOS-level reboot (into the newly-installed OS,
+not the CD), and finally **a real, fully booted Windows Server 2003
+desktop** — Start button, taskbar, Recycle Bin, clock — with a live RDP
+server confirmed via the real X.224 handshake below (not a bare connect).
+Total wall-clock time from container start to a real RDP handshake
+succeeding: **1398 seconds (~23 minutes 18 seconds)**, comfortably inside
+the CLI's 3600s Windows-guest default (see below) and this environment's
+disk budget (final installed disk usage: **1.9 GB**, out of the 8 GB
+allocated).
+
 ### A real false-positive readiness check, caught before it shipped
 
 The obvious way to detect "is the guest up" is a TCP connect to the

@@ -64,8 +64,9 @@ std::string runCapture(const std::string& cmd) {
 /// own port-forwarding proxy accepts TCP connections on 3389 immediately
 /// on container start, long before Windows itself is installed or ready —
 /// confirmed directly (a plain `connect()` succeeded within the first
-/// second of a real run, while the actual OS install was still hours from
-/// done) — so only a real protocol-level response is treated as "up".
+/// second of a real run, while the actual install took ~23 more minutes
+/// to reach a real RDP handshake — see docs/SANDBOX.md) — so only a real
+/// protocol-level response is treated as "up".
 bool rdpHandshakeOk(const std::string& host, int port, int timeoutSeconds) {
     int fd = ::socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return false;
