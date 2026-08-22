@@ -51,10 +51,16 @@ no "big bang" integration at the end.
 
 ## Milestone 5 — Dynamic sandbox
 
-- [ ] `ISandboxProvider` interface + `MockSandboxProvider` for testing
+- [x] Verify QEMU TCG (no KVM) actually executes code in a plain container
+      — `scripts/tcg_probe.sh`
+- [x] `ISandboxProvider` interface + `DetonationReport`/`SandboxProfile`
+      types + `MockSandboxProvider` for testing
 - [ ] Detonation report JSON schema
-- [ ] Real orchestrator integration (CAPEv2 or purpose-built), requires VM
-      infrastructure outside a container sandbox
+- [ ] Guest image (minimal Linux, TCG-booted) + in-guest agent
+- [ ] `QemuTcgSandboxProvider`: QMP-driven launch/snapshot/collect, real
+      orchestrator (see docs/SANDBOX.md for the exact plan) — no longer
+      blocked on VM infrastructure the container doesn't have; blocked only
+      on building the guest image + agent, which is real remaining work
 - [ ] Annotation merge: dynamic coverage, syscalls, network IOCs onto the
       static model
 - [ ] GUI surface for sandbox results

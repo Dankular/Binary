@@ -3,6 +3,7 @@ add_library(compass-core STATIC
     src/low_level_il.cpp
     src/llil_lifter.cpp
     src/radare2_backend.cpp
+    src/mock_sandbox_provider.cpp
 )
 
 target_include_directories(compass-core PUBLIC

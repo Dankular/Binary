@@ -132,4 +132,8 @@ See [SANDBOX.md](SANDBOX.md) — this is architecturally a separate service
 (a VM orchestrator), not part of the core static-analysis library, connected
 via an `ISandboxProvider` interface that turns a detonation report into
 annotations on the existing `Binary`/`Function` model (hit basic blocks,
-observed syscalls, network IOCs).
+observed syscalls, network IOCs). It runs on QEMU's TCG accelerator (pure
+software CPU emulation, no `/dev/kvm` needed) — verified working in a plain
+container via `scripts/tcg_probe.sh` — with KVM used opportunistically when
+available, so this isn't gated on hypervisor infrastructure the way an
+earlier draft of this doc assumed.
