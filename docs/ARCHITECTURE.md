@@ -133,10 +133,54 @@ decompiler integration (Milestone 3) exists to cross-check against.
 
 ## High-Level IL (HLIL)
 
-Not yet implemented; `docs/ROADMAP.md` sequences it as the last piece of
-Milestone 1 (structuring MLIL's block graph into if/else and loop
-statements using the same `DominatorTree`, with a `Goto` fallback for
-whatever a bounded structuring pass doesn't recognize).
+`il::buildHlil()` (`src/core/src/hlil_builder.cpp`) structures MLIL's block
+graph into a statement tree — `If`/`While` nesting instead of `Goto`/`If`
+pointing at block addresses, which is the actual point of having this
+layer. It recognizes exactly two shapes, both located via `DominatorTree`
+rather than by pattern-matching instruction sequences (so, like MLIL/SSA,
+it's architecture-agnostic by construction):
+
+- **if/else diamonds**: a conditional branch whose two arms reconverge at a
+  block whose immediate dominator is the branch block itself and which has
+  more than one predecessor — the standard signature of "both arms flow
+  back together here" (an arm's own start block also has the branch block
+  as its idom, but has only one predecessor, which is what distinguishes
+  "start of an arm" from "the reconvergence point").
+- **simple loops**: a back edge into a header (found via
+  `dom.dominates(successor, self)`) whose own conditional branch has
+  exactly one target inside the natural loop body and one outside.
+
+Anything else — irreducible control flow, multi-exit loops, switch-like
+dispatch, a diamond whose merge point can't be found — degrades to an
+explicit `Goto`/`Label` pair rather than being misstructured. This isn't
+just a design intention: two real bugs turned up validating it against
+actual compiled code (multi-arch, per `scripts/multiarch_smoke_test.sh`,
+and a loop fixture, per `scripts/ir_smoke_test.sh`), both now fixed and
+guarded by regression assertions:
+
+1. **Stack-variable naming collision** (`mlil_builder.cpp`): a loop
+   fixture's `total` local at `[rbp-8]` and the prologue's saved `rbp` at
+   `[rsp-8]` were both named `var_8` — same numeric offset, different base
+   register, genuinely different memory locations, silently merged into
+   one fabricated variable. Fixed by keying the name on the base register
+   too (`var_rbp_8` / `var_rsp_8`) — less pretty than Binary Ninja's fully
+   canonicalized frame-relative naming (real, separate work: folding
+   rsp-relative offsets into their rbp-relative equivalent by tracking
+   cumulative stack height through the function), but never wrong.
+2. **MIPS branch-delay-slot placement** (`hlil_builder.cpp`): `flattenBlock`
+   assumed a block's control-flow expression (If/Goto/Ret) was its last
+   instruction's last expression. On MIPS, the delay-slot instruction is
+   placed *after* the branch in program order, so the If expression sat
+   second-to-last — and silently fell through to being treated as an
+   ordinary statement (rendering via MLIL's raw `if (cond) goto X else Y`
+   form, which looked plausible enough to be easy to miss), leaving the
+   block's real exit undetected. Fixed by scanning the whole block for the
+   last control-flow expression regardless of position, rather than
+   assuming where it sits.
+
+Both are exactly the value multi-architecture testing was for: a lifter
+validated against one architecture's compiler output will encode that
+architecture's assumptions without knowing it.
 
 ## Decompiler integration (planned)
 

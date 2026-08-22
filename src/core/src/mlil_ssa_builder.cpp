@@ -31,9 +31,9 @@ MLILExprPtr deepCopy(const MLILExprPtr& e) {
 /// Builds the throwaway compass::core::Function shape DominatorTree needs,
 /// directly from an MLILFunction's own block graph — no dependency on the
 /// original Function beyond what MLIL already carries.
-Function adaptForDominatorTree(const std::vector<MLILBasicBlock>& blocks) {
+Function adaptForDominatorTree(Address entry, const std::vector<MLILBasicBlock>& blocks) {
     Function fn;
-    if (!blocks.empty()) fn.entry = blocks.front().start;
+    fn.entry = entry;
     for (auto& mbb : blocks) {
         BasicBlock bb;
         bb.start = mbb.start;
@@ -55,6 +55,7 @@ void collectVarsRecursive(const MLILExprPtr& e, std::unordered_map<std::string, 
 MLILSSAFunction buildMlilSsa(const MLILFunction& mlil) {
     MLILSSAFunction ssa;
     if (mlil.basicBlocks.empty()) return ssa;
+    ssa.entry = mlil.entry;
 
     // Deep-copy the whole block/instruction/expr structure so renaming can
     // mutate freely (assigning versions in place) without touching the
@@ -76,7 +77,7 @@ MLILSSAFunction buildMlilSsa(const MLILFunction& mlil) {
     }
     for (auto& mbb : ssa.basicBlocks) byAddr[mbb.start] = &mbb;
 
-    Function domShape = adaptForDominatorTree(ssa.basicBlocks);
+    Function domShape = adaptForDominatorTree(ssa.entry, ssa.basicBlocks);
     analysis::DominatorTree dom(domShape);
 
     // --- Phi placement ---

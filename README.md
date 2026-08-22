@@ -61,6 +61,11 @@ Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - [x] Type system v1 (primitives/pointers/arrays/structs/unions, C-like
       rendering) with width-based propagation onto recovered stack
       variables — see docs/ARCHITECTURE.md for exactly what's in scope
+- [x] HLIL structuring (`--hlil`): real if/else and while-loop recovery via
+      dominator-tree analysis, honest Goto/Label fallback otherwise;
+      verified cross-arch and caught two real bugs along the way (a stack
+      variable naming collision, MIPS branch-delay-slot misdetection) —
+      see docs/ARCHITECTURE.md
 - [x] Dynamic-sandbox groundwork: `ISandboxProvider` interface +
       `MockSandboxProvider`; verified-in-container proof that QEMU's TCG
       accelerator runs real code with no `/dev/kvm` (`scripts/tcg_probe.sh`);

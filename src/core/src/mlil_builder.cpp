@@ -23,12 +23,24 @@ bool isFrameRegister(const std::string& name) {
 }
 
 /// If `addr` is shaped like `frame_reg + K`, `frame_reg - K`, or a bare
-/// `frame_reg`, returns the stack variable name to use (`arg_K`/`var_K`/
-/// `var_0`) — matching Binary Ninja's own var_/arg_ naming convention:
-/// negative (subtracted) offsets are locals, positive (added) offsets are
-/// incoming args / outgoing call slots. Same name for repeated accesses at
-/// the same offset is exactly what makes this a variable and not just
-/// cosmetic — later loads/stores of "the same slot" become the same Var.
+/// `frame_reg`, returns the stack variable name to use (`arg_<reg>_K`/
+/// `var_<reg>_K`) — matching Binary Ninja's own var_/arg_ naming
+/// convention (negative/subtracted offsets are locals, positive/added
+/// offsets are incoming args or outgoing call slots), extended with the
+/// base register's own name.
+///
+/// That extension exists to fix a real bug a loop fixture caught: `push
+/// rbp` writes `[rsp-8]` *before* `rbp` is even established, and a
+/// same-function local can independently live at `[rbp-8]` — same numeric
+/// offset, different base register, genuinely different memory locations.
+/// Naming by offset alone (the first version of this function) collapsed
+/// both into one fabricated "var_8", silently merging two unrelated
+/// variables. Real stack-frame canonicalization (folding rsp-relative
+/// offsets into their rbp-relative equivalent by tracking cumulative stack
+/// height) would produce the prettier var_4/var_8-style names Binary Ninja
+/// shows — that's real, separate work; keying the name on the base
+/// register too is the honest fix available now: it can never collide two
+/// different slots, at the cost of a less pretty name.
 std::optional<std::string> stackVarName(const LLILExpr& addr) {
     auto hex = [](std::uint64_t v) {
         std::ostringstream os;
@@ -36,7 +48,7 @@ std::optional<std::string> stackVarName(const LLILExpr& addr) {
         return os.str();
     };
     if (addr.op == LLILOp::Reg && isFrameRegister(addr.regOrFlag)) {
-        return "var_0";
+        return "var_" + addr.regOrFlag + "_0";
     }
     if ((addr.op == LLILOp::Add || addr.op == LLILOp::Sub) && addr.operands.size() == 2) {
         const LLILExpr* reg = nullptr;
@@ -46,7 +58,8 @@ std::optional<std::string> stackVarName(const LLILExpr& addr) {
             if (o->op == LLILOp::Const) konst = o.get();
         }
         if (reg && konst) {
-            return (addr.op == LLILOp::Sub ? "var_" : "arg_") + hex(konst->constValue);
+            std::string prefix = addr.op == LLILOp::Sub ? "var_" : "arg_";
+            return prefix + reg->regOrFlag + "_" + hex(konst->constValue);
         }
     }
     return std::nullopt;
@@ -174,6 +187,7 @@ MLILExprPtr transform(const LLILExprPtr& e) {
 MLILFunction buildMlil(const Function& fn) {
     MLILFunction mlil;
     if (!fn.llil) return mlil;
+    mlil.entry = fn.entry;
 
     for (auto& bb : fn.basicBlocks) {
         MLILBasicBlock mbb;

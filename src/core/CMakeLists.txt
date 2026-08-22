@@ -10,6 +10,8 @@ add_library(compass-core STATIC
     src/mlil_ssa_builder.cpp
     src/type.cpp
     src/type_inference.cpp
+    src/high_level_il.cpp
+    src/hlil_builder.cpp
 )
 
 target_include_directories(compass-core PUBLIC

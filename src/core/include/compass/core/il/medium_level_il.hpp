@@ -95,6 +95,7 @@ struct MLILBasicBlock {
 /// variable reads/writes. One variable name can still be assigned many
 /// times (no SSA versioning yet) — see MLILSSAFunction for that.
 struct MLILFunction {
+    Address entry = 0;
     std::vector<MLILBasicBlock> basicBlocks;
 };
 
@@ -103,6 +104,7 @@ struct MLILFunction {
 /// an MLILFunction via ssaFromMlil() (mlil_ssa_builder.cpp) using
 /// DominatorTree for correct phi placement.
 struct MLILSSAFunction {
+    Address entry = 0;
     std::vector<MLILBasicBlock> basicBlocks;
 };
 

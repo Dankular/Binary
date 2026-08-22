@@ -26,7 +26,12 @@ no "big bang" integration at the end.
       Cytron-et-al. SSA construction on a unit-tested dominator tree; stack
       variable recovery verified end-to-end (`scripts/ir_smoke_test.sh`,
       `tests/dominators_test.cpp`); see docs/ARCHITECTURE.md
-- [ ] HLIL: structuring pass (loops/if-else recovery) over MLIL
+- [x] HLIL: structuring pass (loops/if-else recovery) over MLIL — real
+      dominator-tree-based structuring (if/else diamonds, simple while
+      loops), honest Goto/Label fallback for anything else; caught and
+      fixed two real bugs in the process (stack-var naming collision,
+      MIPS branch-delay-slot misdetection) — see docs/ARCHITECTURE.md and
+      `scripts/ir_smoke_test.sh`/`scripts/multiarch_smoke_test.sh`
 - [x] Type system v1: primitive + struct/union/pointer types (data model +
       C-like rendering) implemented; propagation through MLIL implemented
       for stack-variable widths specifically (real evidence-based

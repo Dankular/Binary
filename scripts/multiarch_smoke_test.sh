@@ -53,6 +53,20 @@ for arch in "${!TOOLCHAINS[@]}"; do
     # Regression guard: an ESIL identifier the lifter doesn't model should
     # never masquerade as a register read (see header comment above).
     echo "$il" | grep -qE '= (DUP|POP|CLEAR)$' && fail "$arch: an ESIL pseudo-op leaked through as a fabricated register (regression!)"
+
+    echo "== $arch: --function main --hlil (clean if/else, no fallback) =="
+    hlil="$("$CLI" --function main --hlil "$out" 2>/dev/null)" || fail "$arch: --function main --hlil failed"
+    hlil="$(echo "$hlil" | sed -n '/-- HLIL --/,$p')"
+    echo "$hlil" | grep -q "^if (" || fail "$arch: HLIL missing a structured if statement"
+    echo "$hlil" | grep -q "} else {" || fail "$arch: HLIL missing the else clause (should be a clean diamond)"
+    # Regression guard: this exact case (MIPS branch-delay-slot placement)
+    # previously made flattenBlock miss the branch entirely, producing
+    # neither a structured if nor a fallback goto — a silently truncated
+    # CFG. label_0x/goto here means structuring degraded (acceptable in
+    # general, per hlil_builder.hpp's documented scope) OR a raw "if (...)
+    # goto X else Y" one-liner means the If was misfiled as an ordinary
+    # statement (never acceptable — see flattenBlock's header comment).
+    echo "$hlil" | grep -qE "^if \(.*\) goto 0x" && fail "$arch: an If expression leaked through as a plain statement instead of structuring (regression!)"
 done
 
 echo
