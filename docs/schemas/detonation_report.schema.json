@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://compass.local/schemas/detonation_report.schema.json",
+  "title": "DetonationReport",
+  "description": "Decouples the sandbox orchestrator's internals from the core engine (see docs/SANDBOX.md) — any backend that emits this schema works as an ISandboxProvider. Mirrors compass::core::DetonationReport (src/core/include/compass/core/sandbox.hpp) field for field; this file is the actual wire format the in-guest agent (agent/) writes and QemuTcgSandboxProvider parses.",
+  "type": "object",
+  "required": ["completed"],
+  "properties": {
+    "completed": {
+      "type": "boolean",
+      "description": "False if the run didn't finish (timeout, crash, agent error) — see `error`."
+    },
+    "error": {
+      "type": "string",
+      "description": "Set when completed is false: what went wrong."
+    },
+    "executedBlocks": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0 },
+      "description": "Addresses of basic blocks observed to execute. NOT populated by the current agent (strace/tcpdump-based — process/syscall-level, not instruction-level) — would need QEMU TCG plugin instrumentation or a debugger attached (Milestone 5). Left empty rather than fabricated; present in the schema for when that lands."
+    },
+    "syscalls": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/syscallEvent" }
+    },
+    "networkEvents": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/networkEvent" }
+    },
+    "fileEvents": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/fileEvent" }
+    }
+  },
+  "$defs": {
+    "syscallEvent": {
+      "type": "object",
+      "required": ["timestampMs", "name"],
+      "properties": {
+        "timestampMs": { "type": "integer", "minimum": 0, "description": "Milliseconds since the traced process started." },
+        "callSite": { "type": "integer", "minimum": 0, "description": "0 — not populated by the current agent (process-level tracing via strace has no visibility into which instruction in the static binary issued the call; see executedBlocks' note). Present for forward compatibility with a future debugger-based agent that can populate it." },
+        "name": { "type": "string", "description": "Syscall name, e.g. \"openat\", \"connect\"." },
+        "argsText": { "type": "string", "description": "Human-readable arguments, as strace formatted them." }
+      }
+    },
+    "networkEvent": {
+      "type": "object",
+      "required": ["timestampMs", "protocol", "destination"],
+      "properties": {
+        "timestampMs": { "type": "integer", "minimum": 0 },
+        "protocol": { "type": "string", "enum": ["tcp", "udp"] },
+        "destination": { "type": "string", "description": "host:port as observed by tcpdump." },
+        "bytesSent": { "type": "integer", "minimum": 0, "description": "Not populated by the current agent (tcpdump's text summary reports packet/connection events, not per-connection byte totals); 0 until a pcap-parsing pass is added." },
+        "bytesReceived": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "fileEvent": {
+      "type": "object",
+      "required": ["timestampMs", "path", "operation"],
+      "properties": {
+        "timestampMs": { "type": "integer", "minimum": 0 },
+        "path": { "type": "string" },
+        "operation": { "type": "string", "enum": ["open", "create", "write", "unlink", "rename", "mkdir"] }
+      }
+    }
+  }
+}

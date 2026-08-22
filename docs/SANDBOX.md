@@ -163,41 +163,88 @@ real, separate pieces of work).
    proved works.
 6. Network fakery: wire `-netdev user` DNS/proxy options at an
    INetSim/FakeNet-NG instance; capture the pcap.
-7. **Windows guest support** — investigated, not built (see below for why).
+7. **Windows guest support** — verified feasible via a vendored/wrapped
+   `dockur/windows` under TCG (see below); not yet integrated into
+   `ISandboxProvider`.
 8. GUI surface for sandbox results — deferred to Milestone 8 (GUI, moved
    to last: it's the one milestone needing a real display to test, and
    everything above is fully headlessly testable without it).
 
-### Windows guest: what's feasible and what isn't
+### Windows guest: corrected finding — TCG genuinely works here
 
-Two existing open-source projects automate Windows installation into a
-QEMU VM without redistributing Windows itself — both fetch the ISO from
-Microsoft's own servers at build/run time rather than bundling it:
+An earlier version of this document claimed dockur/windows required KVM
+with no TCG fallback. **That was wrong** — caught by going past its README
+into its actual source (the shared `qemus/qemu` base project dockur/windows
+builds on) and then verifying directly, not by reading a summary. Same
+mistake shape as the sandbox's own original TCG claim in an earlier
+session — checked the docs, not the code, and the docs undersell what the
+code does.
 
-- **[dockur/windows](https://github.com/dockur/windows)** (MIT) — the
-  more mature, widely-used reference implementation. Its own README states
-  KVM is **mandatory** with no TCG fallback path; it explicitly calls out
-  that even Docker Desktop's non-KVM setups aren't supported.
-- **cocoonstack/windows** — a similar *builder* (targets Cloud Hypervisor
-  rather than plain QEMU) that likewise requires the user to supply their
-  own Microsoft-signed ISO at build time rather than bundling one, and
-  also documents KVM as a requirement. Its GHCR package
-  (`ghcr.io/cocoonstack/windows/win11`), however, distributes a
-  **prebuilt, already-installed** ~14 GiB Windows qcow2 image — this
-  project deliberately does **not** pull that in. A prebuilt disk image
-  containing an installed copy of Windows is a redistribution of
-  Microsoft's copyrighted OS binaries by a third party, not an
-  installer that fetches from Microsoft — a materially different (and
-  murkier) licensing situation than either builder's own source. If you
-  want a Windows guest, build one yourself from a Windows license you
-  hold, using one of the builder projects above, not by pulling a
-  pre-built third party image.
+**What the source actually does** (`qemus/qemu`'s `src/proc.sh`):
 
-Both builders needing KVM is also a hard practical blocker here
-independent of licensing: this environment has no `/dev/kvm` (same as the
-main TCG proof above), and even where KVM *is* available, a full unattended
-Windows install is a multi-GB download plus a real install run — not
-something to attempt inside a quick verification pass. **Conclusion:**
-Windows guest support stays a documented "bring your own, on a host with
-KVM, using dockur/windows or equivalent" item, not something this project
-builds or ships an image for.
+```sh
+if ! disabled "${KVM:-}"; then
+  configureKvm
+else
+  configureTcg
+fi
+```
+
+`configureTcg()` sets `accel=tcg,thread=multi` — a real, coded path, not
+theoretical. It's gated behind an explicit `KVM=N` environment variable
+rather than auto-detected, and the container's default entrypoint treats
+missing `/dev/kvm` as fatal *unless* that variable is set:
+
+```
+❯ ERROR: KVM acceleration is not available (/dev/kvm is missing), this
+  will cause the machine to run about 10 times slower.
+❯ ERROR: See the FAQ for possible causes, or disable acceleration by
+  adding the "KVM=N" variable (not recommended).
+```
+
+**Verified directly in this environment**, not just read about: started
+`dockerd` (available but not running by default here), pulled
+`dockurr/windows`, and ran it twice —
+
+1. Without `KVM=N`: hit exactly the ERROR above and stopped, confirming
+   the "mandatory by default" behavior real users hit (see e.g. their
+   issue #1577 — a user who didn't realize the override existed).
+2. With `KVM=N`: the *same* message downgrades to a **warning**
+   ("KVM acceleration is disabled, this will cause the machine to run
+   about 10 times slower!") and the container proceeds — it went on to
+   attempt downloading a ReactOS image (`VERSION=reactos`, chosen for a
+   fast/cheap check: same shared boot pipeline as real Windows, ~0.1GB
+   instead of several GB). The download itself failed on a TLS handshake
+   error against `reactos.org` — this environment's outbound proxy
+   rejecting that host's certificate, the same class of issue hit earlier
+   getting Rizin's `tree-sitter` dependency (GitHub archive downloads
+   blocked) — not a dockur/windows limitation. The part that matters was
+   already proven by that point: **the TCG path is real, and it isn't
+   blocked by anything about *this* environment** (no KVM, no root beyond
+   what Docker itself needs, same proxy restrictions as everywhere else in
+   this session).
+
+**cocoonstack/windows** likewise supports `KVM=N`-style TCG per its own
+docs (not independently re-verified here the way dockur/windows was) but
+its GHCR package additionally distributes a **prebuilt, already-installed**
+~14 GiB Windows qcow2 image — deliberately not pulled into this project. A
+prebuilt disk image containing an installed copy of Windows is
+redistribution of Microsoft's copyrighted OS binaries by a third party,
+not an installer that fetches from Microsoft — a materially different (and
+murkier) licensing situation than either builder's own source.
+
+**Conclusion, revised:** per the user's direction, the plan is to vendor/
+wrap dockur/windows's actual bootstrap (`entry.sh`/`define.sh`/`proc.sh`/
+`disk.sh`/`answer.sh`/`image.sh` — ISO mirror discovery, unattended-install
+answer-file generation, virtio driver injection, the TCG-capable QEMU
+invocation itself) behind `ISandboxProvider`, the same "reuse what's
+already open source and working" principle already applied to Rizin,
+Ghidra, and SCC — **not** reimplement Windows unattended-install
+automation from scratch. Not yet wired up: a full run (a real Windows
+version, not the ReactOS proof above) is a multi-GB download and a long
+install even before the ~10x TCG slowdown, genuinely impractical to
+complete inside a normal work session — the integration should be built
+and structurally validated (does the vendored bootstrap invoke correctly,
+does `ISandboxProvider` drive it, does a `DetonationReport` come back) the
+same way the Linux guest path was: boot to a meaningful checkpoint, not a
+multi-hour full run every time it's touched.

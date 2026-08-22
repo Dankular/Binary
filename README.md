@@ -177,7 +177,7 @@ Status legend: ✅ implemented · 🚧 in progress / partial · 📋 designed, n
 | Single sign-on (SSO) | ✅ | — | Project server milestone (OIDC) |
 | Access control & auditing | ✅ | — | Project server milestone |
 | Collaborative analysis | ✅ | — | Project server milestone (CRDT-based merge, like BN's) |
-| Sandbox / dynamic detonation (any.run-style)* | — (not a BN feature) | 🚧 | See [docs/SANDBOX.md](docs/SANDBOX.md) — QEMU **TCG** (no `/dev/kvm` needed). A real Debian guest boots and runs commands over a serial channel today (`scripts/linux_guest_probe.sh`); remaining work is an in-guest agent + syscall/network capture. Windows guest is a documented bring-your-own-KVM-host item (both open builders investigated require KVM) |
+| Sandbox / dynamic detonation (any.run-style)* | — (not a BN feature) | 🚧 | See [docs/SANDBOX.md](docs/SANDBOX.md) — QEMU **TCG** (no `/dev/kvm` needed). A real Debian guest boots and runs commands over a serial channel today (`scripts/linux_guest_probe.sh`); remaining work is an in-guest agent + syscall/network capture. Windows guest verified feasible under TCG too (dockur/windows's real `KVM=N` path, confirmed by running it directly — an earlier draft of this claim was wrong) — plan is to vendor its bootstrap, not yet wired up |
 
 \* Added per project owner's request — not part of Binary Ninja's feature set, but a natural extension for a modern RE platform.
 

@@ -123,10 +123,16 @@ everything it would sit on top of already exists and works.
       sample in, run under timeout, collect the agent's report
 - [ ] Annotation merge: dynamic coverage, syscalls, network IOCs onto the
       static model
-- [ ] Windows guest: investigated (see docs/SANDBOX.md) — both viable
-      builders (dockur/windows, cocoonstack/windows) require KVM, which
-      this environment doesn't have; stays a documented "bring your own on
-      a KVM host" item, not something this project builds/ships
+- [ ] Windows guest: corrected finding (see docs/SANDBOX.md) — an earlier
+      draft wrongly claimed dockur/windows requires KVM with no fallback;
+      verified directly (ran the real container in this environment, with
+      and without its `KVM=N` override) that its TCG path is real and
+      isn't blocked here. Plan: vendor/wrap its actual bootstrap scripts
+      behind `ISandboxProvider`, same reuse-don't-reimplement principle as
+      Rizin/Ghidra/SCC — not yet wired up (a full real-Windows run is a
+      multi-GB download and a long install, impractical to complete in a
+      normal session; the ReactOS-based proof in docs/SANDBOX.md validates
+      the mechanism without that cost)
 - [ ] GUI surface for sandbox results — deferred to Milestone 8, same as
       every other GUI-surfacing item; the sandbox's own headless pipeline
       (above) is fully testable without it
