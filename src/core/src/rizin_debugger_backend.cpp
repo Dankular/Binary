@@ -41,6 +41,17 @@ std::vector<std::uint8_t> hexDecode(const std::string& hex) {
     return out;
 }
 
+std::string hexEncode(const std::vector<std::uint8_t>& data) {
+    static const char digits[] = "0123456789abcdef";
+    std::string out;
+    out.reserve(data.size() * 2);
+    for (auto b : data) {
+        out.push_back(digits[b >> 4]);
+        out.push_back(digits[b & 0xF]);
+    }
+    return out;
+}
+
 } // namespace
 
 class RizinDebuggerBackend final : public IDebuggerBackend {
@@ -271,6 +282,17 @@ public:
         // trailing-junk bug documented in docs/SANDBOX.md for strace's \r).
         while (!hex.empty() && !std::isxdigit(static_cast<unsigned char>(hex.back()))) hex.pop_back();
         return hexDecode(hex);
+    }
+
+    bool writeMemory(Address addr, const std::vector<std::uint8_t>& data) override {
+        if (data.empty()) return true;
+        seek(addr);
+        // "wx" reports failures as "ERROR: Could not write hexpair '..' at
+        // <addr>" text — verified directly against an unmapped address
+        // (empty output is the success case, also verified: a real write
+        // followed by reading the same bytes back via p8 matched exactly).
+        std::string out = runCmd("wx " + hexEncode(data));
+        return out.find("ERROR") == std::string::npos;
     }
 
     bool exited() const override { return exited_; }

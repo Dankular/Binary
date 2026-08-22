@@ -141,9 +141,21 @@ not still running afterward (`pgrep`), not left as a hung tracee.
 ## Scope (v1)
 
 Local ptrace debugging only — ptrace, breakpoints (software, via `db`),
-`continueExec()`'s single-stop-then-return shape, register/memory read.
+`continueExec()`'s single-stop-then-return shape, register/memory
+read+write. `writeMemory()` (`RizinDebuggerBackend`) is `s <addr>; wx
+<hex>` — verified end to end via `compass-cli --debug ... --poke-stack
+<hex>`: a real write to the live debuggee's stack followed by reading the
+same bytes back with the existing `readMemory()` matches exactly
+(`scripts/debugger_smoke_test.sh`). Failure detection is text-based (`wx`
+reports `ERROR: Could not write hexpair '..' at <addr>` on stdout, no
+structured success/failure signal) — verified directly against a real
+unmapped-address write, not assumed.
+
 **Deferred, not attempted in this pass:** remote debugging (gdbserver/WinDbg
 protocol — `RzDebug` already has backends for both, wiring them into
-`IDebuggerBackend` is a real but separate follow-on), watchpoints, memory
-writes, and multi-stop session control (continuing past a hit breakpoint
-without a fresh CLI invocation).
+`IDebuggerBackend` is a real but separate follow-on), watchpoints, and
+multi-stop session control (continuing past a hit breakpoint without a
+fresh CLI invocation — `continueExec()` itself already handles being
+called repeatedly correctly, confirmed directly against a real loop
+fixture hitting the same breakpoint three times with the right
+per-iteration register state each time; the gap is CLI-only).

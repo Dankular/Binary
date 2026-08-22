@@ -73,6 +73,11 @@ public:
 
     virtual std::vector<std::uint8_t> readMemory(Address addr, std::size_t size) = 0;
 
+    /// Writes `data` into the debuggee's memory at `addr`. Returns false on
+    /// a backend-reported failure (e.g. an unmapped/unwritable address);
+    /// does not itself validate the address range first.
+    virtual bool writeMemory(Address addr, const std::vector<std::uint8_t>& data) = 0;
+
     /// True once the debuggee has exited (or was killed) and no further
     /// continueExec() calls are meaningful.
     virtual bool exited() const = 0;

@@ -303,11 +303,14 @@ this roadmap.
 - [ ] Remote debugging (gdbserver/WinDbg protocol) — deferred, not
       attempted in this pass; `RzDebug` already has backends for both, see
       docs/DEBUGGER.md's scope note
-- [ ] Debugger v1 rounding-out: watchpoints, memory *writes* (reads only
-      today), and multi-stop session control (continuing past a hit
-      breakpoint without a fresh CLI invocation — `continueExec()` is a
-      single stop-then-return today) — see docs/DEBUGGER.md's scope note.
-      Smaller and more contained than remote debugging above.
+- [x] Memory writes — `IDebuggerBackend::writeMemory()`, verified end to
+      end (`compass-cli --debug ... --poke-stack <hex>`,
+      `scripts/debugger_smoke_test.sh`); see docs/DEBUGGER.md.
+- [ ] Debugger v1 rounding-out: watchpoints, and multi-stop session
+      control (continuing past a hit breakpoint without a fresh CLI
+      invocation — `continueExec()` itself already supports repeated
+      calls correctly, this is a CLI-only gap, see docs/DEBUGGER.md's
+      scope note). Smaller and more contained than remote debugging above.
 - [ ] GUI breakpoint/register/memory views — deferred to Milestone 8
 
 ## Milestone 6 — Project management & collaboration

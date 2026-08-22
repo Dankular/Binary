@@ -44,6 +44,11 @@ bp_addr="$(echo "$out" | grep "^pc: " | awk '{print $2}')"
 echo "$out" | grep -qE "rdi = 0x(b|000+b)$" || fail "expected rdi = 0xb (11, first arg) — got:\n$out"
 echo "$out" | grep -qE "rsi = 0x(1f|00+1f)$" || fail "expected rsi = 0x1f (31, second arg) — got:\n$out"
 
+echo "== memory write: a real write followed by reading it back matches exactly =="
+out1b="$("$CLI" --debug "$WORK/sample" --break add --timeout 10 --poke-stack deadbeef 2>/dev/null)"
+echo "$out1b" | grep -q "^poke-stack: wrote=true readback=deadbeef$" \
+    || fail "expected a poke-stack write/readback round trip — got:\n$out1b"
+
 echo "== exit: runs to completion with the real exit code =="
 out2="$("$CLI" --debug "$WORK/sample" --timeout 10 2>/dev/null)"
 echo "$out2" | grep -q "^stopped: exited" || fail "expected an exited stop — got:\n$out2"

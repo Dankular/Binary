@@ -35,7 +35,7 @@ void printUsage(const char* argv0) {
               << "  " << argv0 << " --detonate <sample> [--guest-image <qcow2>] [--timeout <secs>] [--merge-annotations]\n"
               << "  " << argv0 << " --detonate <sample> --windows-iso <path-or-VERSION> [--timeout <secs>]\n"
               << "  " << argv0 << " --function <name> --decompile <binary>\n"
-              << "  " << argv0 << " --debug <path> [--debug-arg <arg>]... [--break <symbol>]... [--timeout <secs>]\n";
+              << "  " << argv0 << " --debug <path> [--debug-arg <arg>]... [--break <symbol>]... [--timeout <secs>] [--poke-stack <hexbytes>]\n";
 }
 
 void printDetonationReport(const DetonationReport& r) {
@@ -130,6 +130,7 @@ int main(int argc, char** argv) {
     std::string functionName, path, exportSignaturesPath, applySignaturesPath;
     std::string detonatePath, guestImagePath, windowsIsoOrVersion;
     std::string debugPath;
+    std::string pokeHex;
     int timeoutSeconds = 30;
     bool timeoutExplicit = false;
     std::vector<std::string> pluginPaths, passNames, debugArgs, breakSymbols;
@@ -158,6 +159,7 @@ int main(int argc, char** argv) {
         else if (args[i] == "--debug" && i + 1 < args.size()) debugPath = args[++i];
         else if (args[i] == "--debug-arg" && i + 1 < args.size()) debugArgs.push_back(args[++i]);
         else if (args[i] == "--break" && i + 1 < args.size()) breakSymbols.push_back(args[++i]);
+        else if (args[i] == "--poke-stack" && i + 1 < args.size()) pokeHex = args[++i];
         else path = args[i];
     }
 
@@ -263,6 +265,24 @@ int main(int argc, char** argv) {
             std::cout << "\nregisters:\n";
             for (auto& reg : debugger->registers()) {
                 std::cout << "  " << reg.name << " = 0x" << std::hex << reg.value << std::dec << "\n";
+            }
+            if (!pokeHex.empty()) {
+                std::vector<std::uint8_t> bytes;
+                for (std::size_t i = 0; i + 1 < pokeHex.size(); i += 2) {
+                    bytes.push_back(static_cast<std::uint8_t>(std::stoul(pokeHex.substr(i, 2), nullptr, 16)));
+                }
+                auto rsp = debugger->registerValue("rsp");
+                if (!rsp) {
+                    std::cerr << "error: couldn't read rsp for --poke-stack\n";
+                    return 1;
+                }
+                bool wrote = debugger->writeMemory(*rsp, bytes);
+                auto readBack = debugger->readMemory(*rsp, bytes.size());
+                std::cout << "\npoke-stack: wrote=" << (wrote ? "true" : "false") << " readback=";
+                for (auto b : readBack) {
+                    std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(b);
+                }
+                std::cout << std::dec << "\n";
             }
         }
         return stop.reason == DebugStopEvent::Reason::Error ? 1 : 0;
