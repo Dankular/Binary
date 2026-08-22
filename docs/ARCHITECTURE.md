@@ -16,26 +16,43 @@
 
 ## Layers
 
+Kept current as milestones land — this is the first thing a reader sees,
+so a stale version of it is worse than no diagram at all. Status tags
+below reflect ROADMAP.md as of Milestone 5's completion; check there for
+anything newer.
+
 ```
                     ┌─────────────────────────────────────────┐
-                    │   GUI (Qt) — milestone 2, not built yet  │
+                    │   GUI (Qt) — Milestone 8, not built yet  │
                     └───────────────────┬───────────────────-─┘
-                                         │ Core C++ API (+ planned Python bindings)
+                                         │ Core C++ API + Python bindings (pybind11)
 ┌────────────────────────────────────────────────────────────────────────┐
-│  Workflows (analysis pass pipeline)              — planned              │
-│  Type system (types, archives, signatures)       — planned              │
-│  HLIL  (structured, C-like)                      — planned              │
-│  MLIL  (SSA, variables recovered)                — planned              │
-│  LLIL  (register/flag/memory expr tree)          — IMPLEMENTED (subset) │
-│  CFG / Function / BasicBlock / Instruction model — IMPLEMENTED          │
+│  Workflows (analysis pass pipeline)              — IMPLEMENTED         │
+│  Type system v1 (primitives/pointers/arrays/                          │
+│  structs/unions; width-based propagation onto                        │
+│  stack vars — signedness/register types/pointer                     │
+│  recovery still v1-scoped out, see below)        — IMPLEMENTED (v1)   │
+│  HLIL  (dominator-based if/else + loop structuring,                  │
+│  Goto/Label fallback otherwise)                  — IMPLEMENTED         │
+│  MLIL  (real Cytron-et-al. SSA, stack vars recovered) — IMPLEMENTED    │
+│  LLIL  (ESIL-based lifter, common x86-64/ARM64/ARM32/MIPS)           │
+│                                                   — IMPLEMENTED (subset)│
+│  CFG / Function / BasicBlock / Instruction model — IMPLEMENTED         │
 ├────────────────────────────────────────────────────────────────────────┤
-│  IAnalysisBackend           │  IDecompilerBackend  │  IDebuggerBackend  │
-│  (radare2 today,            │  (Ghidra decompile   │  (r_debug —        │
-│   Rizin drop-in later)      │   core — planned)     │   planned)         │
+│  IAnalysisBackend (load/disasm/signatures,        │  IDebuggerBackend  │
+│  + decompile() via rz-ghidra)                     │  (RzDebug/ptrace,  │
+│  Rizin (primary, auto-selected) /                 │  local; remote —   │
+│  radare2 (fallback)                               │  gdbserver/WinDbg  │
+│                                                    │  — deferred)       │
 ├────────────────────────────────────────────────────────────────────────┤
 │         libr / librz (loading, disasm, ESIL, arch plugins)             │
 └────────────────────────────────────────────────────────────────────────┘
 ```
+
+`ISandboxProvider` (`QemuTcgSandboxProvider` for Linux guests,
+`WindowsSandboxProvider` for Windows) sits alongside this stack rather
+than inside it — architecturally a separate VM-orchestration service, not
+part of the core static-analysis library; see SANDBOX.md.
 
 ## Backend: Rizin (primary) with a radare2 fallback
 

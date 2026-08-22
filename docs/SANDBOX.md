@@ -45,58 +45,66 @@ sudo apt-get install -y qemu-system-x86 python3
 
 ## Design
 
+This is what's actually built (`QemuTcgSandboxProvider`,
+`WindowsSandboxProvider`), not the original pre-implementation sketch —
+an earlier version of this section described a QMP-controlled VM with a
+virtio-serial in-guest agent channel, which is **not** what either real
+provider ended up using; kept accurate here rather than left to drift
+from the code, the same discipline applied to every other "design vs.
+what shipped" gap this project has caught.
+
 ```
-Sample ──▶ Orchestrator ──▶ [disposable VM: qemu-system-x86_64 -accel tcg,
-                              QMP-controlled, qcow2 snapshot/overlay]
-                                   │
-                     ┌─────────────┼──────────────┐
-                     ▼             ▼               ▼
-              syscall/API     network I/O     process/file/
-              trace agent     capture         registry diffing
-              (in-guest,      (-netdev user,   (in-guest agent
-               virtio-serial   no TAP/root      or disk diff
-               to host)        needed)          between snapshots)
-                     │             │               │
-                     └─────────────┴───────┬───────┘
-                                            ▼
-                                   Detonation report (JSON)
-                                            │
-                                            ▼
-                         ISandboxProvider::detonate(sample, profile)
-                                            │
-                                            ▼
-              Annotations merged onto Function/BasicBlock/IL:
-              - basic blocks actually executed (dynamic coverage)
-              - syscalls per call site
-              - network IOCs (domains/IPs/URLs contacted)
-              - dropped/modified files, registry keys, spawned processes
+Sample ──▶ ISandboxProvider::detonate(sample, profile)
+                 │
+                 ▼
+   [disposable qcow2 overlay of a base guest image, -accel tcg]
+                 │
+   Linux guest (QemuTcgSandboxProvider):        Windows guest (WindowsSandboxProvider):
+   - control channel: a unix-socket serial       - wraps docker.io/dockurr/windows
+     shell session (login, mkdir, mount),          directly (its own bootstrap, not
+     not QMP                                       reimplemented)
+   - payload (agent + sample) delivered via a     - readiness: a real RDP X.224
+     genisoimage-built ISO, mounted as a            handshake (a plain TCP connect
+     second QEMU drive — chosen over               is a false positive here — see
+     base64-over-serial after measuring it          below)
+     would need 500+ chunked commands              - v1: proves boot + reachability
+   - in-guest agent (sandbox/agent/agent.sh),        only; no sample delivery/
+     a shell script driving strace/tcpdump,          execution mechanism yet (no
+     retrieved back over the same serial shell       RDP-scriptable channel the
+     via `cat`, not a dedicated virtio-serial         Linux agent's approach maps to)
+     channel
+                 │
+                 ▼
+     DetonationReport (syscalls, file events, network events;
+     executedBlocks/per-call-site attribution defined but not
+     yet populated by any provider — see ANNOTATIONS.md)
+                 │
+                 ▼
+     mergeDetonationReport(): annotations onto Binary/Function/BasicBlock
 ```
 
 ## Accelerator selection
 
-The orchestrator should probe for `/dev/kvm` (readable/writable) at startup
-and pick per-run:
-
-- **KVM present** (bare-metal host, a VM with nested-virt enabled, most
-  dedicated malware-analysis infrastructure) → `-accel kvm`, full speed.
-- **KVM absent** (this kind of container, most CI runners, a locked-down
-  cloud sandbox) → `-accel tcg`, works everywhere, slower.
-
-Same QEMU command line either way (`-accel` is the only thing that
-changes), same QMP control protocol, same snapshot mechanism — the rest of
-this design is accelerator-agnostic by construction.
+**Designed but not implemented**: probing for `/dev/kvm` and preferring it
+when present, falling back to `-accel tcg` otherwise. `QemuTcgSandboxProvider`
+hardcodes `-accel tcg,thread=multi` unconditionally today — correct and
+sufficient everywhere this has been run (no environment used in this
+project's development has had `/dev/kvm`), but leaves real speed on the
+table anywhere that does. `WindowsSandboxProvider` similarly always passes
+`KVM=N` to the container. Real, scoped follow-on work, not done in this
+pass — see ROADMAP.md.
 
 ## Component choices (all open source)
 
-| Concern | Choice | Why |
+| Concern | Choice | Status |
 |---|---|---|
-| CPU emulation | QEMU (`qemu-system-x86_64`/`-aarch64`), `-accel tcg` with opportunistic `-accel kvm` | Verified to run in a plain container (see above); same binary/CLI/QMP protocol regardless of accelerator |
-| VM control | QMP (QEMU Machine Protocol, a JSON-RPC socket QEMU exposes) | Scriptable start/stop/snapshot/monitor without touching the (non-existent, in TCG mode) hypervisor APIs directly |
-| Snapshotting | qcow2 backing-file + overlay per run (`qemu-img create -b base.qcow2 -F qcow2 run.qcow2`), discarded after each detonation | Instant "revert to clean" without needing `savevm`'s full-RAM snapshot cost; works identically under TCG or KVM |
-| Networking | `-netdev user` (QEMU's built-in SLIRP-based usermode NAT) | No TAP device, no `CAP_NET_ADMIN`, no root — works in exactly the kind of unprivileged container this was designed for. Point its DNS/proxy at an INetSim/FakeNet-NG instance for the "fake internet" behavior |
-| Network capture | QEMU's own `-netdev user,...,pcap=file.pcap` or a host-side capture on the SLIRP socket | Built into the same `-netdev user` flag, no extra privilege needed |
-| In-guest instrumentation | A lightweight in-guest agent (virtio-serial channel to the host, like CAPE's `agent.py`) | Simplest to build first; DRAKVUF-style agentless instrumentation (via Xen's VMI) is a possible later upgrade for stealth, but is Xen-specific and not needed for a first working version |
-| Report format | JSON schema local to this project (`docs/schemas/detonation_report.schema.json`, not yet written) | Decouples the orchestrator's internals from the core engine — any backend that emits this schema works |
+| CPU emulation | QEMU (`qemu-system-x86_64`), `-accel tcg` | Implemented; **always TCG today** — the opportunistic `-accel kvm`-when-available probe described here originally was never built, see "Accelerator selection" above |
+| VM control | A unix-socket serial shell session (login, run commands, `cat` files back) | Implemented — **not** QMP; that was the pre-implementation plan, dropped once a plain serial shell turned out to be simpler and sufficient (see "Design" above) |
+| Snapshotting | qcow2 backing-file + overlay per run (`qemu-img create -b base.qcow2 -F qcow2 run.qcow2`), discarded after each detonation | Implemented, `QemuTcgSandboxProvider`/`WindowsSandboxProvider` both use this pattern |
+| Networking | `-netdev user` (QEMU's built-in SLIRP-based usermode NAT) | Implemented for the Linux guest; real internet egress today (no INetSim/FakeNet-NG fake-internet sink wired up — see "network fakery," below, a real gap, not struck through in the roadmap list below because it isn't done) |
+| Network capture | QEMU's own `-netdev user,...,pcap=file.pcap` or a host-side capture on the SLIRP socket | **Not implemented.** `NetworkEvent`s in a `DetonationReport` come from strace's `connect()`/`sendto()` argument parsing today, not a packet capture — no pcap output exists yet |
+| In-guest instrumentation | A lightweight in-guest agent | Implemented, but as a shell script (`sandbox/agent/agent.sh`) driving `strace`/`tcpdump`, retrieved over the serial shell session — not the virtio-serial-channel design originally sketched here |
+| Report format | JSON schema local to this project | Implemented — `docs/schemas/detonation_report.schema.json` |
 
 ## Interface (core-engine side)
 
@@ -206,8 +214,10 @@ worked:
    small static Go/Rust binary": the guest is a full Debian image, so a
    shell script driving `strace`/`tcpdump` needs no cross-compilation step
    and installs its own dependency (`apt-get install strace`) on first run.
-6. Network fakery: wire `-netdev user` DNS/proxy options at an
-   INetSim/FakeNet-NG instance; capture the pcap.
+6. **Not done** — network fakery: wire `-netdev user` DNS/proxy options at
+   an INetSim/FakeNet-NG instance; capture the pcap. Today's `NetworkEvent`s
+   come entirely from parsing strace's `connect()`/`sendto()` arguments, not
+   a packet capture, and network egress from the guest is real, not faked.
 7. ~~**Windows guest support**~~ — `WindowsSandboxProvider`
    (`src/core/src/windows_sandbox_provider.cpp`), wrapping
    `docker run docker.io/dockurr/windows` rather than reimplementing its

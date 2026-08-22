@@ -19,7 +19,7 @@ everything it would sit on top of already exists and works.
 - [x] `compass-cli` headless tool
 - [x] Smoke test against a real compiled binary
 
-## Milestone 1 — Backend hardening (complete)
+## Milestone 1 — Backend hardening (core complete; Mach-O, firmware blobs, type libraries/archives, and a job scheduler are documented follow-ons)
 
 - [x] Switch backend from radare2 to Rizin (`librz`) — implemented
       (`src/core/src/rizin_backend.cpp`), auto-selected by CMake/
@@ -56,8 +56,22 @@ everything it would sit on top of already exists and works.
       Mach-O not attempted (no Apple toolchain available in this
       environment — a real, not fabricated, gap); raw firmware blobs not
       yet tested
+- [ ] Mach-O file format support — blocked on an Apple toolchain to
+      produce real test fixtures with, not on any known code gap in
+      `rz_bin`/`r_bin` itself (both already parse Mach-O)
+- [ ] Raw firmware blob format validation — untested, not necessarily
+      unsupported; no fixture/test built yet
+- [ ] Type libraries/archives (Ghidra-style shared struct/typedef
+      definitions across projects/binaries) — mentioned in README's
+      feature table, no design or implementation started; distinct from
+      the per-binary type system v1 above
+- [ ] Multi-threaded analysis / job scheduler — mentioned in README's
+      feature table only, no roadmap item existed for this before now;
+      `librz`/`libr` analysis is already parallelizable per-function, this
+      would be the scheduler on top of that. Unscoped — needs a design
+      pass before it's a real task, not just a name
 
-## Milestone 2 — Plugin API + headless completeness (complete)
+## Milestone 2 — Plugin API + headless completeness (core complete; Python-side plugin loading and a richer Python object-graph binding are documented follow-ons)
 
 - [x] Stabilize C++ core API headers as the plugin ABI boundary — real
       caveat, not glossed over: this is a same-compiler/same-stdlib-ABI
@@ -81,8 +95,12 @@ everything it would sit on top of already exists and works.
       `scripts/plugin_smoke_test.sh`. Caught and fixed two real bugs in the
       process (disconnected PassRegistry singletons from a static-link
       mistake; a dlclose()-vs-vtable-lifetime segfault at process exit) —
-      see docs/ARCHITECTURE.md. Python-side plugin loading (importlib)
-      waits on the Python bindings item above
+      see docs/ARCHITECTURE.md. Python-side plugin loading (`importlib`-
+      discovered plugins written *in* Python, not just calling the C++
+      API *from* Python — the Python bindings item above only shipped the
+      latter) was noted as waiting on the Python bindings item; that
+      shipped and this was never revisited — still not done, tracked
+      properly below instead of left implicit
 - [x] Workflows: pass-based analysis pipeline, user-registerable passes —
       `IAnalysisPass`/`PassRegistry`/`Workflow`; two built-in passes
       (`lift-all`, `callgraph`) plus the example plugin's `flag-io-callers`
@@ -98,8 +116,21 @@ everything it would sit on top of already exists and works.
       re-identified at a genuinely different address in a different,
       stripped binary, not a same-offset coincidence — for both backends
       (`scripts/signature_smoke_test.sh`)
+- [ ] Python-side plugin loading: `importlib`-discovered plugins written
+      *in* Python (a `PluginManager` counterpart for Python authors), not
+      just today's ability to call the C++ API from a Python script. See
+      the note above — flagged as blocked on the Python bindings item,
+      those shipped, this was never picked back up
+- [ ] Richer Python bindings: today's `compass.Session` API is
+      deliberately flat (returns rendered text, not live objects); a
+      Python plugin building its own analysis over the IL tree needs
+      `Function`/`BasicBlock`/`MLILExpr` as real Python classes referencing
+      into a shared `Binary` — real ownership/lifetime design work (who
+      keeps a `Binary` alive while Python holds a `Function` from it,
+      mutation through the same passes the CLI runs), not attempted yet;
+      see ARCHITECTURE.md's Python bindings section
 
-## Milestone 3 — Decompiler
+## Milestone 3 — Decompiler (text-output integration complete; p-code → MLIL translation and type system v1 extensions are documented follow-ons)
 
 - [x] `IAnalysisBackend::decompile()`, implemented by `RizinBackend` over
       rz-ghidra — a self-contained port of Ghidra's C++ decompiler (no
@@ -125,12 +156,19 @@ everything it would sit on top of already exists and works.
       exactly what this would be built on. See docs/DECOMPILER.md's scope
       note for why this is real, separate work rather than a quick
       follow-on to the text-output integration above.
-- [ ] `GhidraDecompilerBackend` (full Ghidra pipe integration, superseded)
-      — no longer planned: rz-ghidra above delivers the same underlying
-      decompiler without the undocumented/version-sensitive pipe protocol
-      or a JVM dependency this item originally assumed were necessary
+- [x] ~~`GhidraDecompilerBackend` (full Ghidra pipe integration)~~ —
+      superseded, no longer planned: rz-ghidra above delivers the same
+      underlying decompiler without the undocumented/version-sensitive
+      pipe protocol or a JVM dependency this item originally assumed were
+      necessary
+- [ ] Type system v1 extensions: signedness inference, register/flag
+      variable types, pointer/struct recovery — explicitly out of scope
+      for v1 (see ARCHITECTURE.md's type system section) and explicitly
+      gated there on "once the Ghidra decompiler integration exists to
+      cross-check against" — true as of this milestone, so this item is
+      now unblocked, not just theoretically future work
 
-## Milestone 4 — Dynamic sandbox (complete; Windows sample execution and GUI surfacing are documented follow-ons)
+## Milestone 4 — Dynamic sandbox (core pipeline complete; Windows sample execution, opportunistic KVM, network fakery, and GUI surfacing are documented follow-ons)
 
 - [x] Verify QEMU TCG (no KVM) actually executes code in a plain container
       — `scripts/tcg_probe.sh`
@@ -215,11 +253,21 @@ everything it would sit on top of already exists and works.
       matching the code's own behavior: `completed` never becomes `true`
       yet — there is no Windows-side sample delivery/execution mechanism
       (no equivalent of `sandbox/agent/agent.sh`) — see docs/SANDBOX.md.
+- [ ] Opportunistic KVM acceleration — designed (see SANDBOX.md's
+      "Accelerator selection") but never implemented; both
+      `QemuTcgSandboxProvider` and `WindowsSandboxProvider` hardcode TCG
+      unconditionally today. Correct everywhere this has run so far (no
+      `/dev/kvm` in any environment used), but leaves real speed on the
+      table wherever KVM is actually available.
+- [ ] Network fakery: wire `-netdev user` DNS/proxy options at an
+      INetSim/FakeNet-NG instance and capture a pcap — see SANDBOX.md.
+      Today's `NetworkEvent`s come entirely from strace argument parsing,
+      not a packet capture, and guest network egress is real, not faked.
 - [ ] GUI surface for sandbox results — deferred to Milestone 8, same as
       every other GUI-surfacing item; the sandbox's own headless pipeline
       (above) is fully testable without it
 
-## Milestone 5 — Debugger
+## Milestone 5 — Debugger (local ptrace complete; remote debugging, watchpoints/memory writes/multi-stop, and GUI views are documented follow-ons)
 
 Headless-testable throughout (ptrace/gdbserver interaction, breakpoint/
 register/memory state — none of it needs a display), which is why this
@@ -255,6 +303,11 @@ this roadmap.
 - [ ] Remote debugging (gdbserver/WinDbg protocol) — deferred, not
       attempted in this pass; `RzDebug` already has backends for both, see
       docs/DEBUGGER.md's scope note
+- [ ] Debugger v1 rounding-out: watchpoints, memory *writes* (reads only
+      today), and multi-stop session control (continuing past a hit
+      breakpoint without a fresh CLI invocation — `continueExec()` is a
+      single stop-then-return today) — see docs/DEBUGGER.md's scope note.
+      Smaller and more contained than remote debugging above.
 - [ ] GUI breakpoint/register/memory views — deferred to Milestone 8
 
 ## Milestone 6 — Project management & collaboration
