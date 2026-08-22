@@ -13,6 +13,8 @@ add_library(compass-core STATIC
     src/type_inference.cpp
     src/high_level_il.cpp
     src/hlil_builder.cpp
+    src/workflow.cpp
+    src/plugin_manager.cpp
 )
 
 target_include_directories(compass-core PUBLIC
@@ -22,6 +24,7 @@ target_include_directories(compass-core PUBLIC
 target_link_libraries(compass-core
     PUBLIC PkgConfig::R_CORE
     PRIVATE nlohmann_json::nlohmann_json
+    PUBLIC ${CMAKE_DL_LIBS}
 )
 
 # Rizin (librz) is the target production backend (see docs/ARCHITECTURE.md)

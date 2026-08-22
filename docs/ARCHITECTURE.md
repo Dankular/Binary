@@ -267,6 +267,58 @@ Sugiyama via a library like OGDF, not hand-rolled), hex editor, IL views
 (LLIL/MLIL/HLIL toggle), type view. Docking via `QDockWidget` or a
 kddockwidgets-style docking library for BN-like tabbed panes.
 
+## Plugin API and workflows
+
+`compass::core::IAnalysisPass` (`workflow.hpp`) is the extension point: a
+named unit of analysis that runs against a `Function` (with `Binary`
+context alongside it, for cross-function facts like symbol names at call
+targets). `PassRegistry` is a process-wide singleton every pass — built-in
+or plugin-supplied — ends up in; `Workflow` is just an ordered list of pass
+names, resolved against the registry when it runs. Two built-in passes
+ship in `workflow.cpp`: `lift-all` (populates llil/mlil/hlil if absent) and
+`callgraph` (annotates each function with its statically-known call
+targets).
+
+Plugins (`plugin.hpp`, `plugin_manager.hpp`) are `.so` files loaded via
+`dlopen`, exporting three `extern "C"` entry points
+(`compass_plugin_abi_version`/`_create`/`_destroy` — `COMPASS_DECLARE_PLUGIN`
+generates them) that `PluginManager` validates and calls. A loaded plugin's
+`IPlugin::onLoad()` registers passes into the same `PassRegistry` the CLI
+uses — see `plugins/example_io_flagger/` for a complete, real example (not
+compiled into compass-core; built and dlopen'd as a genuinely separate
+`.so` by `scripts/plugin_smoke_test.sh`) and `docs/ROADMAP.md`'s note on
+what "ABI boundary" does and doesn't mean here.
+
+Building and validating this surfaced two real bugs, both fixed:
+
+1. **Disconnected singletons.** The example plugin's first CMake setup
+   `target_link_libraries`'d it against `compass-core` (a static library)
+   — which statically duplicates compass-core's object code, including
+   `PassRegistry::instance()`'s function-local static, into the plugin's
+   `.so`. The plugin registered its pass into *its own* copy of the
+   registry; `compass-cli`'s `Workflow::run()` looked passes up in a
+   *different* copy. The pass "loaded" successfully and then was reported
+   "not found" at every lookup. Fixed with the standard plugin pattern
+   instead: `compass-cli` is built with `ENABLE_EXPORTS` (`-rdynamic`) so
+   its statically-linked compass-core symbols are visible at dlopen time;
+   the plugin compiles only against compass-core's *headers*
+   (`$<TARGET_PROPERTY:compass-core,INTERFACE_INCLUDE_DIRECTORIES>`, no
+   `target_link_libraries`), leaving symbols like `PassRegistry::instance()`
+   undefined in its own `.so` and resolved against the host process's copy
+   at load time.
+2. **Unmapped vtable at exit.** `PluginManager` used to `dlclose()` every
+   plugin in its destructor. `PassRegistry` is a process-lifetime
+   singleton, so it can (and, once a plugin registers a pass, does)
+   outlive any individual `PluginManager` — it still held a
+   `shared_ptr<IAnalysisPass>` whose vtable and destructor lived in that
+   `.so` after it was unmapped. Destroying that `shared_ptr` during the
+   registry's own static-destructor run at process exit segfaulted —
+   caught with `gdb` (the crash backtrace pointed straight at
+   `PassRegistry`'s destructor tearing down the plugin's `shared_ptr`), not
+   a theoretical concern. Fixed by never calling `dlclose()` — the same
+   choice most C++ plugin systems (LLVM, Qt) make for the same reason:
+   load once, never unload, let process exit reclaim it.
+
 ## Dynamic analysis sandbox
 
 See [SANDBOX.md](SANDBOX.md) — this is architecturally a separate service

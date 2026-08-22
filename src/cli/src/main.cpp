@@ -7,7 +7,10 @@
 #include "compass/core/il/hlil_builder.hpp"
 #include "compass/core/il/mlil_builder.hpp"
 #include "compass/core/il/type_inference.hpp"
+#include "compass/core/plugin_manager.hpp"
+#include "compass/core/workflow.hpp"
 
+#include <algorithm>
 #include <iomanip>
 #include <iostream>
 #include <string>
@@ -20,7 +23,9 @@ namespace {
 void printUsage(const char* argv0) {
     std::cerr << "Usage:\n"
               << "  " << argv0 << " --list-functions <binary>\n"
-              << "  " << argv0 << " --function <name> [--il] [--mlil] [--mlil-ssa] <binary>\n"
+              << "  " << argv0 << " --function <name> [--il] [--mlil] [--mlil-ssa] [--hlil] <binary>\n"
+              << "  " << argv0 << " --function <name> [--plugin <path.so>]... --run-pass <name>... <binary>\n"
+              << "  " << argv0 << " --list-passes [--plugin <path.so>]...\n"
               << "  " << argv0 << " --info <binary>\n";
 }
 
@@ -62,8 +67,9 @@ int main(int argc, char** argv) {
     }
 
     bool listFunctions = false, showInfo = false, showIL = false, showMLIL = false, showMLILSSA = false,
-         showHLIL = false;
+         showHLIL = false, listPasses = false;
     std::string functionName, path;
+    std::vector<std::string> pluginPaths, passNames;
     for (std::size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--list-functions") listFunctions = true;
         else if (args[i] == "--info") showInfo = true;
@@ -71,9 +77,35 @@ int main(int argc, char** argv) {
         else if (args[i] == "--mlil") showMLIL = true;
         else if (args[i] == "--mlil-ssa") showMLILSSA = true;
         else if (args[i] == "--hlil") showHLIL = true;
+        else if (args[i] == "--list-passes") listPasses = true;
         else if (args[i] == "--function" && i + 1 < args.size()) functionName = args[++i];
+        else if (args[i] == "--plugin" && i + 1 < args.size()) pluginPaths.push_back(args[++i]);
+        else if (args[i] == "--run-pass" && i + 1 < args.size()) passNames.push_back(args[++i]);
         else path = args[i];
     }
+
+    PluginManager pluginManager;
+    for (auto& p : pluginPaths) {
+        std::string error;
+        if (!pluginManager.loadPlugin(p, error)) {
+            std::cerr << "error: failed to load plugin " << p << ": " << error << "\n";
+            return 1;
+        }
+    }
+    for (auto& info : pluginManager.loaded()) {
+        std::cerr << "loaded plugin: " << info.name << " " << info.version << " (" << info.path << ")\n";
+    }
+
+    if (listPasses) {
+        auto names = PassRegistry::instance().names();
+        std::sort(names.begin(), names.end());
+        for (auto& n : names) {
+            auto pass = PassRegistry::instance().find(n);
+            std::cout << n << "\t" << (pass ? pass->description() : "") << "\n";
+        }
+        return 0;
+    }
+
     if (path.empty()) {
         printUsage(argv[0]);
         return 1;
@@ -128,6 +160,16 @@ int main(int argc, char** argv) {
         if (showHLIL) {
             fn.hlil = il::buildHlil(*fn.mlil);
             std::cout << "\n-- HLIL --\n" << il::render(*fn.hlil);
+        }
+
+        if (!passNames.empty()) {
+            if (!fn.llil) backend->liftLowLevelIL(fn);
+            Workflow workflow;
+            for (auto& p : passNames) workflow.addPass(p);
+            auto problems = workflow.run(bin, fn);
+            for (auto& p : problems) std::cerr << "warning: " << p << "\n";
+            std::cout << "\n-- annotations --\n";
+            for (auto& a : fn.annotations) std::cout << a << "\n";
         }
         return 0;
     }

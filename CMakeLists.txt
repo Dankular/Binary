@@ -15,6 +15,7 @@ find_package(nlohmann_json 3.9 REQUIRED)
 
 add_subdirectory(src/core)
 add_subdirectory(src/cli)
+add_subdirectory(plugins/example_io_flagger)
 
 if(COMPASS_BUILD_TESTS)
     enable_testing()

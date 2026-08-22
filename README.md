@@ -79,6 +79,12 @@ Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
       verified cross-arch and caught two real bugs along the way (a stack
       variable naming collision, MIPS branch-delay-slot misdetection) —
       see docs/ARCHITECTURE.md
+- [x] Plugin API + workflows (`--list-passes`/`--run-pass`/`--plugin`):
+      `IAnalysisPass`/`PassRegistry`/`Workflow`, a real dlopen-based
+      `PluginManager`, and a genuine standalone example plugin
+      (`plugins/example_io_flagger/`) — validated end-to-end
+      (`scripts/plugin_smoke_test.sh`), including two real bugs this
+      caught and fixed (see docs/ARCHITECTURE.md)
 - [x] Dynamic-sandbox groundwork: `ISandboxProvider` interface +
       `MockSandboxProvider`; verified-in-container proof that QEMU's TCG
       accelerator runs real code with no `/dev/kvm` (`scripts/tcg_probe.sh`);

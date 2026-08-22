@@ -29,6 +29,15 @@ struct Function {
     /// Built from `mlil` (the plain, non-SSA form) by il::buildHlil().
     std::optional<il::HLILFunction> hlil;
 
+    /// Free-form findings appended by IAnalysisPass::run() — e.g. "calls
+    /// 0x1169", "IO caller: printf". Deliberately simple (human-readable
+    /// strings, not a typed property bag): the passes implemented so far
+    /// don't need structured queries over this, and adding real structure
+    /// (typed annotation kinds, a query API) is easy to do later without
+    /// disturbing existing passes, whereas guessing a schema now risks
+    /// designing it around passes that don't exist yet.
+    std::vector<std::string> annotations;
+
     const BasicBlock* blockAt(Address addr) const {
         for (const auto& bb : basicBlocks) {
             if (addr >= bb.start && addr < bb.end) return &bb;

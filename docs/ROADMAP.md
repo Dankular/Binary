@@ -53,10 +53,26 @@ no "big bang" integration at the end.
 
 ## Milestone 2 — Plugin API + headless completeness
 
-- [ ] Stabilize C++ core API headers as the plugin ABI boundary
+- [x] Stabilize C++ core API headers as the plugin ABI boundary — real
+      caveat, not glossed over: this is a same-compiler/same-stdlib-ABI
+      boundary (`extern "C"` entry points, C++ objects passed across
+      after that), the same constraint most C++ plugin systems live with,
+      not a stronger stable-ABI-across-compilers guarantee. See
+      docs/ARCHITECTURE.md
 - [ ] Python bindings (pybind11) mirroring the C++ API
-- [ ] Plugin discovery/loading (dlopen-based for C++, importlib for Python)
-- [ ] Workflows: pass-based analysis pipeline, user-registerable passes
+- [x] Plugin discovery/loading (dlopen-based for C++) — `PluginManager`,
+      `IPlugin`/`PluginContext`, `COMPASS_DECLARE_PLUGIN`; validated with a
+      real standalone example plugin (`plugins/example_io_flagger/`) via
+      `scripts/plugin_smoke_test.sh`. Caught and fixed two real bugs in the
+      process (disconnected PassRegistry singletons from a static-link
+      mistake; a dlclose()-vs-vtable-lifetime segfault at process exit) —
+      see docs/ARCHITECTURE.md. Python-side plugin loading (importlib)
+      waits on the Python bindings item above
+- [x] Workflows: pass-based analysis pipeline, user-registerable passes —
+      `IAnalysisPass`/`PassRegistry`/`Workflow`; two built-in passes
+      (`lift-all`, `callgraph`) plus the example plugin's `flag-io-callers`
+      demonstrating a third-party-supplied pass; `--list-passes`/
+      `--run-pass` in compass-cli
 - [ ] Signature/FLIRT-style function matching (via Rizin zignatures)
 
 ## Milestone 3 — Decompiler
