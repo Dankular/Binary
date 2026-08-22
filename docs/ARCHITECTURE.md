@@ -37,17 +37,64 @@
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Why radare2 today instead of Rizin
+## Backend: Rizin (primary) with a radare2 fallback
 
-The target backend is **Rizin** (LGPL-2.1, actively maintained, cleaner API
-than upstream radare2). This sandbox's package repositories don't carry a
-`rizin`/`librz` package, so the skeleton is built and validated against
-`libradare2-dev`, which is installable here and shares the same lineage and
-API shape (`r_core`, `r_anal`, `r_asm`, `r_bin`, ESIL). All backend code lives
-behind `IAnalysisBackend` in exactly one file
-(`src/core/src/radare2_backend.cpp`) — porting to `librz`'s `Rz`-prefixed API
-is a mechanical rename of that one translation unit, not an architecture
-change. Track this in `docs/ROADMAP.md` under "Backend: switch to Rizin".
+**Rizin** is the target production backend (LGPL-2.1, actively maintained,
+cleaner API than upstream radare2) — and is implemented and working, not
+just planned. `src/core/src/rizin_backend.cpp` is compiled and becomes the
+default automatically whenever CMake finds `librz` via pkg-config; radare2
+(`src/core/src/radare2_backend.cpp`) remains as the fallback for
+environments without Rizin available, selected via `makeDefaultAnalysisBackend()`
+in `backend.hpp`. Neither the CLI nor anything above `IAnalysisBackend`
+needs to know or care which one is active.
+
+Rizin isn't packaged for common distros (checked: not in Ubuntu 24.04's
+repos), so getting it requires a from-source build —
+`scripts/build_rizin.sh` automates this (meson + ninja, ~2000 build
+targets, ~5-10 minutes). Two real, non-obvious things that build hits and
+the script works around:
+
+- Rizin's `tree-sitter` subproject downloads a GitHub release tarball by
+  default, which a restrictive outbound proxy may reject (hit and fixed
+  while developing this) — installing the system `libtree-sitter-dev`
+  package and passing `-Duse_sys_tree_sitter=enabled` avoids that specific
+  download (its default is `disabled`, not `auto`, so it doesn't fall back
+  to the system package on its own even when present).
+- Everything else Rizin's build needs (capstone, pcre2, `tree-sitter-c`,
+  `sigdb`, ...) fetches via `git clone` through meson's `wrap-git`
+  mechanism, which is unaffected by that proxy restriction.
+
+Porting `radare2_backend.cpp` to Rizin was **not** the pure mechanical
+rename this doc originally predicted — validating it against a real binary
+surfaced two real, structural differences worth recording:
+
+1. **No `agfj` equivalent.** radare2's `agfj` returns one JSON blob per
+   function: blocks, each with an embedded `ops` array carrying
+   `offset`/`esil`/`opcode`/`type`/`jump`/`fail` per instruction — exactly
+   what `loadFunctionGraph()` needs in one call. Rizin's closest-named
+   command, `agf json`/`agf json_disasm` (`agfj` itself doesn't exist),
+   turned out to be a *different* schema: a generic node/edge graph with
+   pre-rendered, ANSI-colored disassembly text blobs per node rather than
+   structured per-instruction fields — not usable as a drop-in. The fix:
+   compose two commands that do carry compatible structured fields —
+   `afbj` for block boundaries/successors, then `pdj <ninstr> @ <block>`
+   per block for its instructions (Rizin kept `pdj`'s per-instruction JSON
+   shape compatible with radare2's, which is what makes this work at all).
+   One extra round trip per block versus radare2's single call; not
+   validated at a scale where that matters yet.
+2. **Stray ANSI escape prefix on some JSON output.** `pdj`/`afbj` (not
+   `ij`/`iSj`/`isj`/`aflj`) prepend a console "erase line" escape
+   (`ESC[2K`) to their output even with `scr.color`/`scr.interactive`
+   off — a rendering artifact, not JSON, that broke naive parsing. Fixed
+   defensively in `runJson()` by parsing from the first `{`/`[` in the
+   returned string rather than its start, so it doesn't matter which
+   commands do this or why.
+
+Both were caught the same way everything else in this IL stack's real bugs
+were: running it against actual compiled binaries
+(`scripts/multiarch_smoke_test.sh`, `scripts/ir_smoke_test.sh` — both pass
+identically against either backend) rather than trusting that a
+same-lineage API would behave the same.
 
 ## Core domain model
 

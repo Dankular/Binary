@@ -5,11 +5,14 @@ feature parity with Binary Ninja — built entirely on open libraries and releas
 under an OSI-approved license.
 
 > **Status: early foundation.** This repository currently contains a headless
-> core-engine skeleton (file loading → disassembly → CFG → a first cut of a
-> low-level IL), plus the architecture and roadmap for everything else. It is
-> **not** feature-complete, and claiming otherwise would be dishonest — Binary
-> Ninja represents years of dedicated engineering. See [ROADMAP.md](docs/ROADMAP.md)
-> for what's real today vs. planned.
+> core engine — file loading → disassembly → CFG → a full LLIL/MLIL(+SSA)/HLIL
+> IL stack, a type system v1, and dynamic-sandbox groundwork — validated
+> across x86-64/ARM64/ARM32/MIPS and two interchangeable analysis backends
+> (Rizin, radare2), plus the architecture and roadmap for everything else.
+> It is **not** feature-complete, and claiming otherwise would be dishonest —
+> Binary Ninja represents years of dedicated engineering. There is no GUI,
+> no decompiler, no debugger, and no plugin API yet. See
+> [ROADMAP.md](docs/ROADMAP.md) for what's real today vs. planned.
 
 ## Why "Compass" and not "Binary Ninja"?
 
@@ -26,7 +29,11 @@ monolithic reimplementation:
 - **Analysis/disassembly substrate**: the radare2/Rizin family (`librz`/`libr`)
   — multi-architecture disassembly, binary loading, ESIL semantics, debugger
   backends, signature (FLIRT-like) matching. LGPL-2.1, used as a dynamically
-  linked backend behind an internal interface (see below).
+  linked backend behind an internal interface (see below). **Both backends
+  are implemented and working today** — Rizin (`librz`) is the production
+  target and used automatically when available; radare2 (`libr`) is a
+  fully-functional fallback, since Rizin isn't packaged for common distros
+  yet (`scripts/build_rizin.sh` builds it from source).
 - **Decompiler**: Ghidra's C++ decompiler core (`decompile`/Sleigh), driven
   headless via its native pipe protocol, feeding our own IL rather than
   Ghidra's Java UI. Apache-2.0.
@@ -44,14 +51,20 @@ Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## What's implemented right now
 
 - [x] CMake project scaffold, `compass-core` static library
-- [x] `IAnalysisBackend` interface + a working radare2-backed implementation
-- [x] Binary loading (any format `libr`'s `r_bin` supports: ELF, PE, Mach-O, raw, ...)
+- [x] `IAnalysisBackend` interface with **two working implementations** —
+      Rizin (`rizin_backend.cpp`, the target production backend, used
+      automatically when found) and radare2 (`radare2_backend.cpp`,
+      fallback) — selected transparently via `makeDefaultAnalysisBackend()`
+- [x] Binary loading (any format `r_bin`/`rz_bin` supports: ELF, PE,
+      Mach-O, raw, ...) — ELF, PE64, and raw all validated end-to-end;
+      Mach-O not yet (no Apple toolchain in the dev environment)
 - [x] Function discovery, basic block/CFG construction
-- [x] Linear disassembly for one architecture validated end-to-end (x86-64)
-- [x] First-cut Low-Level IL: an expression-tree IR (`Reg`, `Const`, `Load`,
-      `Store`, `Add`, `Sub`, `SetReg`, `If`, `Goto`, `Call`, `Ret`, ...) with an
-      ESIL→LLIL lifter covering common x86-64 instructions (`mov`, `lea`,
-      `add`/`sub`, `push`/`pop`, `cmp`/`test`, `jmp`/`jcc`, `call`/`ret`)
+- [x] Disassembly validated end-to-end across x86-64, ARM64, ARM32, and
+      MIPS (`scripts/multiarch_smoke_test.sh`)
+- [x] Low-Level IL: an expression-tree IR (`Reg`, `Const`, `Load`,
+      `Store`, `Add`, `Sub`, `SetReg`, `If`, `Goto`, `Call`, `Ret`, ...) with a
+      generic ESIL→LLIL RPN evaluator — architecture-agnostic by
+      construction, verified across all 4 architectures above
 - [x] `compass-cli`: headless tool — load a binary, list functions, print
       disassembly + CFG edges + lifted LLIL for a chosen function
 - [x] MLIL + real SSA construction (stack variable recovery, dominance-
@@ -77,21 +90,33 @@ Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Building
 
 ```sh
-# Dependencies (Debian/Ubuntu): radare2 dev headers as the disassembly backend
-# for this milestone (Rizin proper — see docs/ARCHITECTURE.md — is a drop-in
-# swap once packaged in your environment).
-sudo apt-get install -y libradare2-dev libxxhash-dev cmake g++ pkg-config
+# Minimum dependencies (Debian/Ubuntu) — builds against radare2:
+sudo apt-get install -y libradare2-dev libxxhash-dev nlohmann-json3-dev cmake g++ pkg-config
 
 cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build -j
 ./build/src/cli/compass-cli --list-functions /bin/ls
-./build/src/cli/compass-cli --function main --il /bin/ls
+./build/src/cli/compass-cli --function main --hlil /bin/ls
 ```
 
-Run the smoke test:
+For the target production backend, build Rizin first (not packaged for
+common distros yet — this builds it from source, ~5-10 minutes):
 
 ```sh
-./scripts/smoke_test.sh
+./scripts/build_rizin.sh
+rm -rf build && cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+# look for "Compass: Rizin (librz) found" in the configure output
+cmake --build build -j
+```
+
+Run the tests:
+
+```sh
+./scripts/smoke_test.sh            # core pipeline against a real binary
+./scripts/ir_smoke_test.sh         # MLIL/SSA/HLIL, incl. dominator unit tests
+./scripts/multiarch_smoke_test.sh  # x86-64/ARM64/ARM32/MIPS/PE64 (needs cross-compilers)
+./scripts/tcg_probe.sh             # sandbox groundwork: QEMU TCG works with no /dev/kvm
+./scripts/linux_guest_probe.sh     # sandbox groundwork: real guest boot + serial control
 ```
 
 ## Feature parity tracker
@@ -101,17 +126,17 @@ Status legend: ✅ implemented · 🚧 in progress / partial · 📋 designed, n
 | Feature | Binary Ninja (Personal/Commercial/Enterprise) | Compass status | Open-source approach |
 |---|---|---|---|
 | Included installers | 4 platforms | 📋 | CI-built packages (deb/rpm/AppImage/macOS/Windows) once GUI exists |
-| Multi-threaded analysis | ✅ | 🚧 | `libr`/Rizin analysis is already parallelizable per-function; our job scheduler is planned |
-| Disassembler | ✅ | ✅ (x86-64) | radare2/Rizin `r_asm`/`r_anal`, Capstone under the hood |
+| Multi-threaded analysis | ✅ | 🚧 | `librz`/`libr` analysis is already parallelizable per-function; our job scheduler is planned |
+| Disassembler | ✅ | ✅ (x86-64, ARM64, ARM32, MIPS) | Rizin (primary)/radare2 (fallback) `rz_asm`/`r_asm`, Capstone under the hood |
 | Decompiler | ✅ | 📋 | Ghidra decompiler core (headless), or `r2ghidra`/`r2dec` as interim |
-| Decompilation architectures | 18+ | 🚧 (1 today) | Inherited from Ghidra Sleigh + Rizin arch plugins; enabled incrementally |
+| Decompilation architectures | 18+ | 🚧 (4 validated today) | Inherited from Ghidra Sleigh + Rizin arch plugins; enabled incrementally |
 | Community architectures (extension manager) | ✅ | — | Depends on plugin manager (below) |
-| File formats | 9+ | 🚧 | `r_bin` already parses ELF/PE/Mach-O/raw/etc.; exposed via our loader today |
+| File formats | 9+ | 🚧 (ELF, PE64, raw validated; Mach-O not yet) | `rz_bin`/`r_bin` already parses ELF/PE/Mach-O/raw/etc.; exposed via our loader today |
 | Hex editor | ✅ | — | Milestone 2 (Qt GUI) |
-| Type libraries/archives/signatures | ✅ | — | Our type system (planned) + Rizin FLIRT/zignatures + Ghidra data type archives |
-| Debugger | ✅ | — | `r_debug` backends (ptrace/gdbserver/WinDbg) behind `IDebuggerBackend` |
+| Type libraries/archives/signatures | ✅ | 🚧 | Type system v1 implemented (primitives/pointers/arrays/structs/unions + width-based propagation onto stack vars); libraries/archives/signatures still planned (Rizin FLIRT/zignatures + Ghidra data type archives) |
+| Debugger | ✅ | — | `rz_debug`/`r_debug` backends (ptrace/gdbserver/WinDbg) behind `IDebuggerBackend` |
 | "Sidekick"-capable (AI assist) | ✅ (partial purchase) | — | Optional plugin calling any LLM API; no vendor lock-in |
-| Full BNIL introspection | ✅ | 🚧 | Our LLIL exists; MLIL/HLIL/SSA layers are the next IL milestones |
+| Full BNIL introspection | ✅ | 🚧 | LLIL, MLIL (+ real SSA), and HLIL (dominator-based if/else + loop structuring) all implemented; MLIL-SSA-based HLIL construction and richer type propagation are the natural next steps |
 | Plugin API | ✅ | 📋 | C++ core API + Python bindings (pybind11), stable ABI boundary |
 | Plugin manager / community plugins | ✅ | — | Package index + in-app manager, after plugin API lands |
 | Workflows (custom analysis pipelines) | ✅ | — | Pass-based analysis pipeline over the IL, user-scriptable |

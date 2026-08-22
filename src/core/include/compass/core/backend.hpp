@@ -36,4 +36,15 @@ public:
 
 std::unique_ptr<IAnalysisBackend> makeRadare2Backend();
 
+#ifdef COMPASS_HAVE_RIZIN
+/// The target production backend (see docs/ARCHITECTURE.md) — only
+/// declared when CMake found librz via pkg-config (COMPASS_HAVE_RIZIN).
+std::unique_ptr<IAnalysisBackend> makeRizinBackend();
+#endif
+
+/// Picks Rizin when this build was compiled against it, radare2 otherwise
+/// — the CLI and anything else that just wants "the best backend
+/// available" should call this instead of naming one directly.
+std::unique_ptr<IAnalysisBackend> makeDefaultAnalysisBackend();
+
 } // namespace compass::core

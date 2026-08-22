@@ -21,4 +21,6 @@ if(COMPASS_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-message(STATUS "Compass: analysis backend = radare2 (target backend: Rizin, see docs/ARCHITECTURE.md)")
+# src/core/CMakeLists.txt already reports which analysis backend this
+# configure picked (Rizin if pkg-config found it, radare2 otherwise) —
+# see the "Compass: Rizin (librz) found/not found" message above.

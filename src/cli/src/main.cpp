@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    auto backend = makeRadare2Backend();
+    auto backend = makeDefaultAnalysisBackend();
     if (!backend->load(path)) {
         std::cerr << "error: " << backend->lastError() << "\n";
         return 1;

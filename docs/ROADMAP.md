@@ -13,10 +13,18 @@ no "big bang" integration at the end.
 - [x] `compass-cli` headless tool
 - [x] Smoke test against a real compiled binary
 
-## Milestone 1 — Backend hardening
+## Milestone 1 — Backend hardening (complete)
 
-- [ ] Switch backend from radare2 to Rizin (`librz`) once available; confirm
-      via CI on an environment that packages it, or vendor/build it
+- [x] Switch backend from radare2 to Rizin (`librz`) — implemented
+      (`src/core/src/rizin_backend.cpp`), auto-selected by CMake/
+      `makeDefaultAnalysisBackend()` whenever `librz` is found, radare2
+      remains the fallback. `scripts/build_rizin.sh` builds Rizin from
+      source (not packaged for common distros yet). Not a pure rename as
+      originally assumed — see docs/ARCHITECTURE.md for the two real
+      schema differences this surfaced (no `agfj` equivalent; a stray
+      ANSI-escape prefix on some JSON output) and how they were fixed.
+      Validated against the full multi-arch + IR test suite against both
+      backends with identical results
 - [x] Multi-architecture validation (ARM64, MIPS, at minimum) — done for
       x86-64/ARM64/ARM32/MIPS, `scripts/multiarch_smoke_test.sh`. Caught and
       fixed a real lifter bug in the process: ARM64 ESIL's `DUP`
