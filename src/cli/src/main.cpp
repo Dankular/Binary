@@ -8,6 +8,7 @@
 #include "compass/core/il/mlil_builder.hpp"
 #include "compass/core/il/type_inference.hpp"
 #include "compass/core/plugin_manager.hpp"
+#include "compass/core/sandbox.hpp"
 #include "compass/core/workflow.hpp"
 
 #include <algorithm>
@@ -28,7 +29,28 @@ void printUsage(const char* argv0) {
               << "  " << argv0 << " --list-passes [--plugin <path.so>]...\n"
               << "  " << argv0 << " --export-signatures <path> <binary>\n"
               << "  " << argv0 << " --apply-signatures <path> <binary>\n"
-              << "  " << argv0 << " --info <binary>\n";
+              << "  " << argv0 << " --info <binary>\n"
+              << "  " << argv0 << " --detonate <sample> [--guest-image <qcow2>] [--timeout <secs>]\n";
+}
+
+void printDetonationReport(const DetonationReport& r) {
+    if (!r.completed) {
+        std::cout << "completed: false\nerror: " << r.error << "\n";
+        return;
+    }
+    std::cout << "completed: true\n"
+              << "syscalls: " << r.syscalls.size() << "\n"
+              << "fileEvents: " << r.fileEvents.size() << "\n"
+              << "networkEvents: " << r.networkEvents.size() << "\n\n";
+    for (auto& e : r.fileEvents) {
+        std::cout << "[file] t+" << e.timestampMs << "ms  " << e.operation << "  " << e.path << "\n";
+    }
+    for (auto& e : r.networkEvents) {
+        std::cout << "[net]  t+" << e.timestampMs << "ms  " << e.protocol << "  " << e.destination << "\n";
+    }
+    for (auto& e : r.syscalls) {
+        std::cout << "[sys]  t+" << e.timestampMs << "ms  " << e.name << "(" << e.argsText << ")\n";
+    }
 }
 
 void printInfo(const Binary& bin) {
@@ -71,11 +93,16 @@ int main(int argc, char** argv) {
     bool listFunctions = false, showInfo = false, showIL = false, showMLIL = false, showMLILSSA = false,
          showHLIL = false, listPasses = false;
     std::string functionName, path, exportSignaturesPath, applySignaturesPath;
+    std::string detonatePath, guestImagePath;
+    int detonateTimeout = 30;
     std::vector<std::string> pluginPaths, passNames;
     for (std::size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--list-functions") listFunctions = true;
         else if (args[i] == "--info") showInfo = true;
         else if (args[i] == "--il") showIL = true;
+        else if (args[i] == "--detonate" && i + 1 < args.size()) detonatePath = args[++i];
+        else if (args[i] == "--guest-image" && i + 1 < args.size()) guestImagePath = args[++i];
+        else if (args[i] == "--timeout" && i + 1 < args.size()) detonateTimeout = std::stoi(args[++i]);
         else if (args[i] == "--mlil") showMLIL = true;
         else if (args[i] == "--mlil-ssa") showMLILSSA = true;
         else if (args[i] == "--hlil") showHLIL = true;
@@ -108,6 +135,19 @@ int main(int argc, char** argv) {
             std::cout << n << "\t" << (pass ? pass->description() : "") << "\n";
         }
         return 0;
+    }
+
+    if (!detonatePath.empty()) {
+        if (guestImagePath.empty()) {
+            const char* cacheEnv = std::getenv("COMPASS_SANDBOX_GUEST_IMAGE");
+            guestImagePath = cacheEnv ? cacheEnv : "./.cache/debian-12-nocloud-amd64.qcow2";
+        }
+        auto provider = makeQemuTcgSandboxProvider(guestImagePath);
+        SandboxProfile profile;
+        profile.timeoutSeconds = static_cast<std::uint32_t>(detonateTimeout);
+        auto report = provider->detonate(detonatePath, profile);
+        printDetonationReport(report);
+        return report.completed ? 0 : 1;
     }
 
     if (path.empty()) {

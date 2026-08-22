@@ -121,13 +121,58 @@ public:
 `MockSandboxProvider` (returns a canned report) and the `ISandboxProvider`
 interface itself are implemented now — see `src/core/include/compass/core/sandbox.hpp`
 and `src/core/src/mock_sandbox_provider.cpp` — so annotation-merging code
-against the core model can be built and tested today. A real
-`QemuTcgSandboxProvider` (launch QEMU, drive QMP, collect the in-guest
-agent's output into a `DetonationReport`) is the next concrete step — see
-Roadmap below; it needs a guest disk image, which this doc deliberately
-doesn't attempt to acquire/build in a quick pass (hundreds of MB–GB
-download, guest-side agent installation, base-snapshot preparation are all
-real, separate pieces of work).
+against the core model can be built and tested today.
+
+`QemuTcgSandboxProvider` (`src/core/src/qemu_tcg_sandbox_provider.cpp`) is
+now real, not planned: it boots a disposable qcow2 overlay of a guest image
+under `-accel tcg`, delivers the sample and the in-guest agent
+(`sandbox/agent/agent.sh`) via a `genisoimage`-built ISO attached as a
+second QEMU drive (chosen over base64-over-serial — a 785KB test binary
+would need 500+ chunked serial commands, an ISO mount is one), drives login
+and the agent run over the same unix-socket serial channel
+`linux_guest_probe.sh` proved, retrieves the agent's `strace`/`tcpdump`
+logs, and parses them into a `DetonationReport`. Verified end to end
+against a real fixture (drops a file, opens a TCP connection) —
+`scripts/sandbox_detonate_test.sh` — asserting the report contains the
+exact events those syscalls should produce, not just that the run
+completed.
+
+Two real bugs were found and fixed while getting this from "runs, reports
+empty" to "runs, reports correctly" — both caught by checking actual
+captured data rather than trusting that a plausible-looking implementation
+worked:
+
+1. **`parseStraceLog()`'s regex matched nothing.** The end-to-end run
+   completed successfully and the in-guest agent genuinely captured 30
+   lines of real strace output, but the parser reported `syscalls: 0,
+   fileEvents: 0, networkEvents: 0`. Dumping the raw retrieved log
+   (`COMPASS_SANDBOX_DEBUG=1`) showed well-formed lines like
+   `509   16:14:11.002380 brk(NULL)         = 0x19f5b000`. Isolating the
+   regex in a standalone test program against that exact captured text
+   still matched 0 of 30 lines. The initial hypothesis — that trailing
+   `\r` from the guest terminal's `\r\n` line endings (visible as `^M` in
+   `cat -A`) was the cause — seemed insufficient on paper, since
+   ECMAScript's `.` matches `\r` by default and the pattern ends in
+   `(.*)$`, so a greedy `.*` should still be able to consume a trailing
+   `\r`. Reasoning about it further wasn't productive; testing it
+   directly was: a minimal repro (`std::regex_match` against the same
+   string with and without an appended `\r`) showed the match flips from
+   `true` to `false` the moment `\r` is appended, confirming the cause
+   empirically rather than by continuing to reason about ECMAScript
+   semantics on paper. `std::getline` only splits on `\n`, so every line
+   from this guest kept its trailing `\r`. Fixed by stripping trailing
+   `\r`/whitespace from each line before matching.
+2. **`qemu-img create -F qcow2 -b <relative-path>` resolves the backing
+   file relative to the *overlay's* directory, not the caller's cwd.**
+   `main.cpp` defaults the guest image to a relative path
+   (`./.cache/debian-12-nocloud-amd64.qcow2`); `fs::exists()` happily
+   found it from the process's cwd, but `qemu-img create` failed once the
+   overlay was written to a `/tmp/compass_sandbox_XXXXXX` work dir,
+   because it looks for the backing file relative to *that* directory
+   instead. Reproduced directly with a manual `qemu-img create -b
+   './relative/path'` from a different cwd before fixing. Fixed by
+   canonicalizing the guest image path (`fs::absolute()`) before it's
+   used as `-b`.
 
 ## Safety/ethics notes for implementers
 
@@ -151,16 +196,16 @@ real, separate pieces of work).
    Debian's official `nocloud` cloud image directly rather than a custom
    image, since it already boots straight to a root prompt with no
    provisioning step needed.
-4. `QemuTcgSandboxProvider`: same boot+control pattern as the probe script,
-   generalized — push a sample in (e.g. via a virtio-9p share of a host
-   directory rather than typing bytes over the serial console), run it
-   under a timeout, collect an in-guest agent's syscall/file/process log
-   instead of just echoing a marker back.
-5. In-guest agent: a small static binary (Go or Rust — avoids needing a
-   libc match with the guest) that starts at boot, execs the pushed
-   sample, and reports syscalls/file events/network activity back over the
-   same serial or virtio-serial channel `linux_guest_probe.sh` already
-   proved works.
+4. ~~`QemuTcgSandboxProvider`: same boot+control pattern as the probe
+   script, generalized~~ — done, see `src/core/src/qemu_tcg_sandbox_provider.cpp`
+   and the "corrected finding" note above for the real bugs found getting
+   here. Payload delivery ended up being an ISO mount rather than virtio-9p
+   — simpler to get working with `genisoimage` + a second `-drive`, no
+   guest-side 9p mount support to depend on.
+5. ~~In-guest agent~~ — done, `sandbox/agent/agent.sh`. Deviates from "a
+   small static Go/Rust binary": the guest is a full Debian image, so a
+   shell script driving `strace`/`tcpdump` needs no cross-compilation step
+   and installs its own dependency (`apt-get install strace`) on first run.
 6. Network fakery: wire `-netdev user` DNS/proxy options at an
    INetSim/FakeNet-NG instance; capture the pcap.
 7. **Windows guest support** — verified feasible via a vendored/wrapped

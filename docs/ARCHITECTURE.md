@@ -408,3 +408,13 @@ software CPU emulation, no `/dev/kvm` needed) — verified working in a plain
 container via `scripts/tcg_probe.sh` — with KVM used opportunistically when
 available, so this isn't gated on hypervisor infrastructure the way an
 earlier draft of this doc assumed.
+
+`QemuTcgSandboxProvider` (`src/core/src/qemu_tcg_sandbox_provider.cpp`) is the
+real implementation: disposable qcow2 overlay per run, sample+agent
+delivered via a mounted ISO, in-guest shell agent (`sandbox/agent/agent.sh`)
+driving `strace`/`tcpdump`, output parsed back into a `DetonationReport`.
+Verified against real captured data end to end — `scripts/sandbox_detonate_test.sh`
+— not just that the run reports success; see SANDBOX.md for the two real
+parsing/pathing bugs this caught (a `std::regex_match` rejecting every line
+over a trailing `\r`, and `qemu-img`'s relative-backing-file resolution
+being relative to the overlay's directory rather than the caller's cwd).

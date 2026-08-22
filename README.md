@@ -6,8 +6,8 @@ under an OSI-approved license.
 
 > **Status: early foundation.** This repository currently contains a headless
 > core engine — file loading → disassembly → CFG → a full LLIL/MLIL(+SSA)/HLIL
-> IL stack, a type system v1, and dynamic-sandbox groundwork — validated
-> across x86-64/ARM64/ARM32/MIPS and two interchangeable analysis backends
+> IL stack, a type system v1, and a working dynamic-analysis sandbox —
+> validated across x86-64/ARM64/ARM32/MIPS and two interchangeable analysis backends
 > (Rizin, radare2), plus the architecture and roadmap for everything else.
 > It is **not** feature-complete, and claiming otherwise would be dishonest —
 > Binary Ninja represents years of dedicated engineering. There is no GUI,
@@ -97,12 +97,14 @@ Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
       implementation; radare2's own zignatures) — verified re-identifying
       a function at a genuinely different address in a different,
       stripped binary, for both backends (`scripts/signature_smoke_test.sh`)
-- [x] Dynamic-sandbox groundwork: `ISandboxProvider` interface +
-      `MockSandboxProvider`; verified-in-container proof that QEMU's TCG
-      accelerator runs real code with no `/dev/kvm` (`scripts/tcg_probe.sh`);
-      a real Debian guest boots under TCG from a disposable overlay and
-      runs a command over a serial control channel
-      (`scripts/linux_guest_probe.sh`) — see [docs/SANDBOX.md](docs/SANDBOX.md)
+- [x] Dynamic-analysis sandbox: `QemuTcgSandboxProvider` boots a disposable
+      QEMU/TCG overlay (no `/dev/kvm` needed — `scripts/tcg_probe.sh`),
+      detonates a sample under an in-guest agent (`sandbox/agent/agent.sh`,
+      `strace`+`tcpdump`) delivered via a mounted ISO, and returns a real
+      `DetonationReport` (syscalls, file events, network events) —
+      `compass-cli --detonate <sample>`, verified end to end against a real
+      fixture (`scripts/sandbox_detonate_test.sh`) — see
+      [docs/SANDBOX.md](docs/SANDBOX.md)
 - [ ] Everything else in the feature table below — tracked in the roadmap.
 
 ## Building
@@ -145,6 +147,7 @@ Run the tests:
 ./scripts/signature_smoke_test.sh  # FLIRT/zignature matching across two differently-addressed binaries
 ./scripts/tcg_probe.sh             # sandbox groundwork: QEMU TCG works with no /dev/kvm
 ./scripts/linux_guest_probe.sh     # sandbox groundwork: real guest boot + serial control
+./scripts/sandbox_detonate_test.sh # sandbox: real end-to-end detonation, asserts on captured syscalls/files/network
 ```
 
 ## Feature parity tracker
@@ -177,7 +180,7 @@ Status legend: ✅ implemented · 🚧 in progress / partial · 📋 designed, n
 | Single sign-on (SSO) | ✅ | — | Project server milestone (OIDC) |
 | Access control & auditing | ✅ | — | Project server milestone |
 | Collaborative analysis | ✅ | — | Project server milestone (CRDT-based merge, like BN's) |
-| Sandbox / dynamic detonation (any.run-style)* | — (not a BN feature) | 🚧 | See [docs/SANDBOX.md](docs/SANDBOX.md) — QEMU **TCG** (no `/dev/kvm` needed). A real Debian guest boots and runs commands over a serial channel today (`scripts/linux_guest_probe.sh`); remaining work is an in-guest agent + syscall/network capture. Windows guest verified feasible under TCG too (dockur/windows's real `KVM=N` path, confirmed by running it directly — an earlier draft of this claim was wrong) — plan is to vendor its bootstrap, not yet wired up |
+| Sandbox / dynamic detonation (any.run-style)* | — (not a BN feature) | 🚧 | See [docs/SANDBOX.md](docs/SANDBOX.md) — QEMU **TCG** (no `/dev/kvm` needed). `QemuTcgSandboxProvider` detonates a sample in a disposable overlay and returns a real syscall/file/network `DetonationReport` (`compass-cli --detonate`), verified end to end (`scripts/sandbox_detonate_test.sh`). Remaining work: merging the report onto the static `Binary`/`Function` model as annotations, and a Windows guest (verified feasible under TCG via dockur/windows's real `KVM=N` path, confirmed by running it directly — an earlier draft of this claim was wrong — plan is to vendor its bootstrap, not yet wired up) |
 
 \* Added per project owner's request — not part of Binary Ninja's feature set, but a natural extension for a modern RE platform.
 

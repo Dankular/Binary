@@ -116,11 +116,38 @@ everything it would sit on top of already exists and works.
 - [x] Boot a real Linux guest (official Debian cloud image) under TCG from
       a disposable qcow2 overlay, log in and run a command over a serial
       control channel — `scripts/linux_guest_probe.sh`
-- [ ] Detonation report JSON schema
-- [ ] In-guest agent (static Go/Rust binary) reporting syscalls/files/
-      network activity back over that same channel
-- [ ] `QemuTcgSandboxProvider`: generalizes the probe script — push a
-      sample in, run under timeout, collect the agent's report
+- [x] Detonation report JSON schema —
+      `docs/schemas/detonation_report.schema.json`
+- [x] In-guest agent reporting syscalls/files/network activity back over
+      that same channel — `sandbox/agent/agent.sh`. Deviates from this
+      item's original "static Go/Rust binary" wording: the guest is a
+      full Debian image (not a minimal custom rootfs) and payload
+      delivery is via a mounted ISO (see below), so a shell script driving
+      `strace`/`tcpdump` is trivial to deliver and needs no cross-compiled
+      agent binary or build step of its own
+- [x] `QemuTcgSandboxProvider`: generalizes the probe script — push a
+      sample in, run under timeout, collect the agent's report —
+      `src/core/src/qemu_tcg_sandbox_provider.cpp`. Payload (agent + sample)
+      delivered via a `genisoimage`-built ISO mounted as a second QEMU
+      drive, chosen over base64-over-serial after measuring that a 785KB
+      test binary would need 500+ chunked serial commands to transfer.
+      Verified end to end — `scripts/sandbox_detonate_test.sh` — against a
+      real fixture that drops a file and opens a TCP connection, asserting
+      the returned `DetonationReport` contains the exact FileEvent/
+      NetworkEvent/SyscallEvent data those syscalls should produce, not
+      just that the run completed. Two real bugs found and fixed during
+      this build (see docs/SANDBOX.md for full detail):
+      1. `parseStraceLog()`'s regex matched 0 of 30 real captured lines —
+         `std::getline` only splits on `\n`, so every line kept the guest
+         terminal's trailing `\r`, and a trailing `\r` was enough to make
+         `std::regex_match` reject the whole line even with a pattern
+         ending in `(.*)$` — verified directly with an isolated test, not
+         assumed. Fixed by stripping trailing `\r`/whitespace per line
+         before matching.
+      2. `qemu-img create -b <relative-path>` resolves the backing-file
+         path relative to the *overlay's* directory, not the caller's
+         cwd — broke the moment the overlay moved to a `/tmp` work dir.
+         Fixed by canonicalizing the guest image path before use.
 - [ ] Annotation merge: dynamic coverage, syscalls, network IOCs onto the
       static model
 - [ ] Windows guest: corrected finding (see docs/SANDBOX.md) — an earlier

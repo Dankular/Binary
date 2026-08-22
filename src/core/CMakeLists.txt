@@ -5,6 +5,7 @@ add_library(compass-core STATIC
     src/radare2_backend.cpp
     src/backend_selection.cpp
     src/mock_sandbox_provider.cpp
+    src/qemu_tcg_sandbox_provider.cpp
     src/dominators.cpp
     src/medium_level_il.cpp
     src/mlil_builder.cpp

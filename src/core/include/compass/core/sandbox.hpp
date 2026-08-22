@@ -72,4 +72,12 @@ public:
 /// useful for exercising annotation-merging code without a real guest VM.
 std::unique_ptr<ISandboxProvider> makeMockSandboxProvider();
 
+/// The real provider: boots a disposable QEMU/TCG overlay of
+/// `defaultGuestImage` (a qcow2 base image — see
+/// scripts/linux_guest_probe.sh for how to obtain one), runs the sample
+/// under the in-guest agent (sandbox/agent/agent.sh), and returns a
+/// DetonationReport parsed from its strace/tcpdump output. Linux-only.
+/// See docs/SANDBOX.md.
+std::unique_ptr<ISandboxProvider> makeQemuTcgSandboxProvider(const std::string& defaultGuestImage);
+
 } // namespace compass::core
