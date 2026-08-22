@@ -361,6 +361,42 @@ happened not to exercise them:
    just bumps its reference count and promotes its scope, it doesn't map a
    second copy. A no-op (already global) when the caller is `compass-cli`.
 
+## Signature/FLIRT-style function matching
+
+`IAnalysisBackend::exportSignatures()`/`applySignatures()` — "has this
+function been seen before, even stripped/renamed" matching, implemented
+per-backend against each one's *actual* signature subsystem, which turned
+out to be a real, structural divergence rather than a naming difference
+once checked directly (same discovery pattern as the `agfj` gap in the
+Rizin backend swap):
+
+- **radare2**: "zignatures" (`z`-prefixed commands) — its own scheme: byte
+  patterns + mask, call-graph metrics, basic-block hash, all in an sdb
+  file. `zg` generates them for every analyzed function, `zos`/`zo`
+  save/load the file, `z/` matches loaded signatures against the current
+  binary.
+- **Rizin**: a genuine FLIRT implementation (`librz/sign/flirt.c`) — the
+  same `.sig`/`.pat` format IDA Pro's FLIRT uses — under the `F` prefix
+  (`Fc`/`Fs`), a structurally different subsystem, not just renamed
+  commands. This is the more standards-aligned of the two, and matches
+  what `docs/ROADMAP.md` actually meant by "Rizin zignatures" even though
+  that turned out to be the wrong name for it.
+
+A signature file from one backend is **not** portable to the other —
+different serialization entirely. `compass-cli --export-signatures
+<path>`/`--apply-signatures <path>` work against whichever backend the
+build defaults to.
+
+Verified against the actual real-world use case, not a same-address
+coincidence: `scripts/signature_smoke_test.sh` compiles two *different*
+programs where `add()` deliberately lands at different addresses (one has
+padding functions before it), strips the second, exports a signature from
+the first, and confirms applying it to the second correctly re-identifies
+and renames the stripped, differently-addressed `add()` — checked against
+both backends manually before writing the C++ (radare2's zignatures and
+Rizin's FLIRT independently, via each project's own CLI) and against
+whichever backend this build defaults to via the test script.
+
 ## Dynamic analysis sandbox
 
 See [SANDBOX.md](SANDBOX.md) — this is architecturally a separate service

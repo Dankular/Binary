@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <unordered_map>
 
 namespace compass::core {
 
@@ -91,19 +92,63 @@ public:
         il::liftFunctionLLIL(fn);
     }
 
+    // radare2's own signature format ("zignatures": byte patterns + mask,
+    // graph metrics, basic-block hash — its own scheme, not the FLIRT
+    // standard Rizin's backend uses; see backend.hpp's note on why the two
+    // aren't interchangeable). zg generates them for every analyzed
+    // function; zos/zo save/load the sdb-format file; z/ matches loaded
+    // signatures against the current binary.
+    bool exportSignatures(const std::string& outputPath, std::string& error) const override {
+        runCmd("zg");
+        std::string out = runCmd("zos " + outputPath);
+        if (out.find("error") != std::string::npos || out.find("Error") != std::string::npos) {
+            error = out;
+            return false;
+        }
+        return true;
+    }
+
+    std::vector<SignatureMatch> applySignatures(const std::string& path, std::string& error) override {
+        std::unordered_map<Address, std::string> before;
+        for (auto& fn : binary_.functions) before[fn.entry] = fn.name;
+
+        std::string openOut = runCmd("zo " + path);
+        if (openOut.find("Cannot open") != std::string::npos) {
+            error = "failed to open signature file: " + path;
+            return {};
+        }
+        runCmd("z/");
+
+        // Re-run function discovery so binary_.functions picks up any
+        // names z/ changed — same call loadFunctions() already uses, so
+        // matched functions' basic blocks/instructions get refreshed too,
+        // not just their name.
+        binary_.functions.clear();
+        loadFunctions();
+
+        std::vector<SignatureMatch> matches;
+        for (auto& fn : binary_.functions) {
+            auto it = before.find(fn.entry);
+            if (it != before.end() && it->second != fn.name) {
+                matches.push_back({fn.entry, fn.name});
+            }
+        }
+        return matches;
+    }
+
 private:
     RCore* core_ = nullptr;
     Binary binary_;
     std::string error_;
 
-    std::string runCmd(const std::string& cmd) {
+    std::string runCmd(const std::string& cmd) const {
         char* out = r_core_cmd_str(core_, cmd.c_str());
         std::string s = out ? out : "";
         if (out) free(out);
         return s;
     }
 
-    std::optional<json> runJson(const std::string& cmd) {
+    std::optional<json> runJson(const std::string& cmd) const {
         std::string s = runCmd(cmd);
         if (s.empty()) return json::array();
         try {

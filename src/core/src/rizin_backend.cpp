@@ -24,6 +24,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <unordered_map>
 
 namespace compass::core {
 
@@ -88,19 +89,58 @@ public:
 
     void liftLowLevelIL(Function& fn) const override { il::liftFunctionLLIL(fn); }
 
+    // Rizin's signature subsystem is a real FLIRT implementation
+    // (librz/sign/flirt.c) — the same .sig format IDA Pro's FLIRT uses —
+    // under the `F` command prefix, not the `z`-prefixed zignatures
+    // radare2's backend uses (see backend.hpp's note: the two file
+    // formats aren't interchangeable). `Fc <path>` creates a signature
+    // file from the current binary's analyzed functions; `Fs <path>`
+    // opens one and applies it against the current binary.
+    bool exportSignatures(const std::string& outputPath, std::string& error) const override {
+        std::string out = runCmd("Fc " + outputPath);
+        if (out.find("Error") != std::string::npos || out.find("error") != std::string::npos) {
+            error = out;
+            return false;
+        }
+        return true;
+    }
+
+    std::vector<SignatureMatch> applySignatures(const std::string& path, std::string& error) override {
+        std::unordered_map<Address, std::string> before;
+        for (auto& fn : binary_.functions) before[fn.entry] = fn.name;
+
+        std::string out = runCmd("Fs " + path);
+        if (out.find("Error") != std::string::npos || out.find("Cannot") != std::string::npos) {
+            error = out.empty() ? ("failed to apply signature file: " + path) : out;
+            return {};
+        }
+
+        binary_.functions.clear();
+        loadFunctions();
+
+        std::vector<SignatureMatch> matches;
+        for (auto& fn : binary_.functions) {
+            auto it = before.find(fn.entry);
+            if (it != before.end() && it->second != fn.name) {
+                matches.push_back({fn.entry, fn.name});
+            }
+        }
+        return matches;
+    }
+
 private:
     RzCore* core_ = nullptr;
     Binary binary_;
     std::string error_;
 
-    std::string runCmd(const std::string& cmd) {
+    std::string runCmd(const std::string& cmd) const {
         char* out = rz_core_cmd_str(core_, cmd.c_str());
         std::string s = out ? out : "";
         if (out) free(out);
         return s;
     }
 
-    std::optional<json> runJson(const std::string& cmd) {
+    std::optional<json> runJson(const std::string& cmd) const {
         std::string s = runCmd(cmd);
         if (s.empty()) return json::array();
         // Some Rizin commands (pdj/afbj among them; not observed on

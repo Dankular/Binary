@@ -5,8 +5,16 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace compass::core {
+
+/// One function a signature file matched against the currently loaded
+/// binary — see IAnalysisBackend::applySignatures().
+struct SignatureMatch {
+    Address address;
+    std::string matchedName;
+};
 
 /// Everything above this interface (domain model, IL, and eventually the
 /// GUI) is written once against this contract. Today's implementation
@@ -32,6 +40,26 @@ public:
     /// because LLIL lifting is comparatively expensive and callers (CLI,
     /// future GUI) may only want it for a handful of functions.
     virtual void liftLowLevelIL(Function& fn) const = 0;
+
+    /// Generates a function-signature file from the currently loaded
+    /// binary's analyzed functions, written to `outputPath`. The file
+    /// format is backend-specific — Rizin writes its own FLIRT `.sig`
+    /// format (the same one IDA Pro's FLIRT uses); radare2 writes its own
+    /// zignature format. A signature file made by one backend is NOT
+    /// portable to the other (different serialization entirely, not just
+    /// a naming difference) — this is a real, documented limitation, not
+    /// an oversight; see docs/ARCHITECTURE.md.
+    virtual bool exportSignatures(const std::string& outputPath, std::string& error) const = 0;
+
+    /// Loads a signature file (same backend-specific format
+    /// exportSignatures wrote) and attempts to match it against functions
+    /// in the currently loaded binary — the actual "was this stripped/
+    /// unknown function seen before" use case. Matched functions have
+    /// their name updated in binary() to reflect the match, and are
+    /// returned here as (address, matchedName) pairs — the same
+    /// information, just without requiring the caller to diff binary()
+    /// before and after to notice what changed.
+    virtual std::vector<SignatureMatch> applySignatures(const std::string& path, std::string& error) = 0;
 };
 
 std::unique_ptr<IAnalysisBackend> makeRadare2Backend();

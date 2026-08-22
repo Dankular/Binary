@@ -91,6 +91,12 @@ Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
       Python (`scripts/python_smoke_test.sh`), including two real
       environment-specific bugs this surfaced and fixed (see
       docs/ARCHITECTURE.md)
+- [x] Signature/FLIRT-style function matching (`--export-signatures`/
+      `--apply-signatures`): implemented per-backend against each one's
+      real, structurally-different subsystem (Rizin's actual FLIRT
+      implementation; radare2's own zignatures) — verified re-identifying
+      a function at a genuinely different address in a different,
+      stripped binary, for both backends (`scripts/signature_smoke_test.sh`)
 - [x] Dynamic-sandbox groundwork: `ISandboxProvider` interface +
       `MockSandboxProvider`; verified-in-container proof that QEMU's TCG
       accelerator runs real code with no `/dev/kvm` (`scripts/tcg_probe.sh`);
@@ -136,6 +142,7 @@ Run the tests:
 ./scripts/multiarch_smoke_test.sh  # x86-64/ARM64/ARM32/MIPS/PE64 (needs cross-compilers)
 ./scripts/plugin_smoke_test.sh     # plugin API: dlopen a real example plugin, run its pass
 ./scripts/python_smoke_test.sh     # Python bindings, incl. running a plugin's pass from Python
+./scripts/signature_smoke_test.sh  # FLIRT/zignature matching across two differently-addressed binaries
 ./scripts/tcg_probe.sh             # sandbox groundwork: QEMU TCG works with no /dev/kvm
 ./scripts/linux_guest_probe.sh     # sandbox groundwork: real guest boot + serial control
 ```
@@ -154,7 +161,7 @@ Status legend: ✅ implemented · 🚧 in progress / partial · 📋 designed, n
 | Community architectures (extension manager) | ✅ | — | Depends on plugin manager (below) |
 | File formats | 9+ | 🚧 (ELF, PE64, raw validated; Mach-O not yet) | `rz_bin`/`r_bin` already parses ELF/PE/Mach-O/raw/etc.; exposed via our loader today |
 | Hex editor | ✅ | — | Milestone 2 (Qt GUI) |
-| Type libraries/archives/signatures | ✅ | 🚧 | Type system v1 implemented (primitives/pointers/arrays/structs/unions + width-based propagation onto stack vars); libraries/archives/signatures still planned (Rizin FLIRT/zignatures + Ghidra data type archives) |
+| Type libraries/archives/signatures | ✅ | 🚧 | Type system v1 implemented (primitives/pointers/arrays/structs/unions + width-based propagation onto stack vars); function signature matching (FLIRT/zignatures) implemented and verified per-backend — see below; type *libraries/archives* (sharing struct/typedef definitions across projects, Ghidra data type archives) still planned |
 | Debugger | ✅ | — | `rz_debug`/`r_debug` backends (ptrace/gdbserver/WinDbg) behind `IDebuggerBackend` |
 | "Sidekick"-capable (AI assist) | ✅ (partial purchase) | — | Optional plugin calling any LLM API; no vendor lock-in |
 | Full BNIL introspection | ✅ | 🚧 | LLIL, MLIL (+ real SSA), and HLIL (dominator-based if/else + loop structuring) all implemented; MLIL-SSA-based HLIL construction and richer type propagation are the natural next steps |

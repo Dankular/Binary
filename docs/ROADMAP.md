@@ -51,7 +51,7 @@ no "big bang" integration at the end.
       environment — a real, not fabricated, gap); raw firmware blobs not
       yet tested
 
-## Milestone 2 — Plugin API + headless completeness
+## Milestone 2 — Plugin API + headless completeness (complete)
 
 - [x] Stabilize C++ core API headers as the plugin ABI boundary — real
       caveat, not glossed over: this is a same-compiler/same-stdlib-ABI
@@ -82,7 +82,16 @@ no "big bang" integration at the end.
       (`lift-all`, `callgraph`) plus the example plugin's `flag-io-callers`
       demonstrating a third-party-supplied pass; `--list-passes`/
       `--run-pass` in compass-cli
-- [ ] Signature/FLIRT-style function matching (via Rizin zignatures)
+- [x] Signature/FLIRT-style function matching — `exportSignatures()`/
+      `applySignatures()` on `IAnalysisBackend`, implemented per-backend
+      against each one's actual (and structurally different — see
+      docs/ARCHITECTURE.md) subsystem: Rizin's real FLIRT implementation
+      (the roadmap's "Rizin zignatures" was the wrong name for this) and
+      radare2's own zignatures. `--export-signatures`/`--apply-signatures`
+      in compass-cli. Verified against the real use case — a function
+      re-identified at a genuinely different address in a different,
+      stripped binary, not a same-offset coincidence — for both backends
+      (`scripts/signature_smoke_test.sh`)
 
 ## Milestone 3 — Decompiler
 

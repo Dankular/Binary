@@ -26,6 +26,8 @@ void printUsage(const char* argv0) {
               << "  " << argv0 << " --function <name> [--il] [--mlil] [--mlil-ssa] [--hlil] <binary>\n"
               << "  " << argv0 << " --function <name> [--plugin <path.so>]... --run-pass <name>... <binary>\n"
               << "  " << argv0 << " --list-passes [--plugin <path.so>]...\n"
+              << "  " << argv0 << " --export-signatures <path> <binary>\n"
+              << "  " << argv0 << " --apply-signatures <path> <binary>\n"
               << "  " << argv0 << " --info <binary>\n";
 }
 
@@ -68,7 +70,7 @@ int main(int argc, char** argv) {
 
     bool listFunctions = false, showInfo = false, showIL = false, showMLIL = false, showMLILSSA = false,
          showHLIL = false, listPasses = false;
-    std::string functionName, path;
+    std::string functionName, path, exportSignaturesPath, applySignaturesPath;
     std::vector<std::string> pluginPaths, passNames;
     for (std::size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--list-functions") listFunctions = true;
@@ -81,6 +83,8 @@ int main(int argc, char** argv) {
         else if (args[i] == "--function" && i + 1 < args.size()) functionName = args[++i];
         else if (args[i] == "--plugin" && i + 1 < args.size()) pluginPaths.push_back(args[++i]);
         else if (args[i] == "--run-pass" && i + 1 < args.size()) passNames.push_back(args[++i]);
+        else if (args[i] == "--export-signatures" && i + 1 < args.size()) exportSignaturesPath = args[++i];
+        else if (args[i] == "--apply-signatures" && i + 1 < args.size()) applySignaturesPath = args[++i];
         else path = args[i];
     }
 
@@ -115,6 +119,30 @@ int main(int argc, char** argv) {
     if (!backend->load(path)) {
         std::cerr << "error: " << backend->lastError() << "\n";
         return 1;
+    }
+
+    if (!exportSignaturesPath.empty()) {
+        std::string error;
+        if (!backend->exportSignatures(exportSignaturesPath, error)) {
+            std::cerr << "error: failed to export signatures: " << error << "\n";
+            return 1;
+        }
+        std::cout << "wrote signatures to " << exportSignaturesPath << "\n";
+        return 0;
+    }
+
+    if (!applySignaturesPath.empty()) {
+        std::string error;
+        auto matches = backend->applySignatures(applySignaturesPath, error);
+        if (!error.empty()) {
+            std::cerr << "error: failed to apply signatures: " << error << "\n";
+            return 1;
+        }
+        for (auto& m : matches) {
+            std::cout << "0x" << std::hex << m.address << std::dec << "  " << m.matchedName << "\n";
+        }
+        std::cout << matches.size() << " function(s) matched\n";
+        return 0;
     }
 
     const Binary& bin = backend->binary();
