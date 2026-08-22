@@ -4,6 +4,12 @@ add_library(compass-core STATIC
     src/llil_lifter.cpp
     src/radare2_backend.cpp
     src/mock_sandbox_provider.cpp
+    src/dominators.cpp
+    src/medium_level_il.cpp
+    src/mlil_builder.cpp
+    src/mlil_ssa_builder.cpp
+    src/type.cpp
+    src/type_inference.cpp
 )
 
 target_include_directories(compass-core PUBLIC

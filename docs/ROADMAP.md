@@ -17,12 +17,26 @@ no "big bang" integration at the end.
 
 - [ ] Switch backend from radare2 to Rizin (`librz`) once available; confirm
       via CI on an environment that packages it, or vendor/build it
-- [ ] Multi-architecture validation (ARM64, MIPS, at minimum)
-- [ ] MLIL: SSA form + stack variable recovery over LLIL
+- [x] Multi-architecture validation (ARM64, MIPS, at minimum) — done for
+      x86-64/ARM64/ARM32/MIPS, `scripts/multiarch_smoke_test.sh`. Caught and
+      fixed a real lifter bug in the process: ARM64 ESIL's `DUP`
+      stack-pseudo-op was silently becoming a fabricated register read (see
+      llil_lifter.cpp's ALL-CAPS-token handling)
+- [x] MLIL: SSA form + stack variable recovery over LLIL — real
+      Cytron-et-al. SSA construction on a unit-tested dominator tree; stack
+      variable recovery verified end-to-end (`scripts/ir_smoke_test.sh`,
+      `tests/dominators_test.cpp`); see docs/ARCHITECTURE.md
 - [ ] HLIL: structuring pass (loops/if-else recovery) over MLIL
-- [ ] Type system v1: primitive + struct/union/pointer types, propagate
-      through MLIL/HLIL
-- [ ] Expand file-format coverage validation (PE, Mach-O, raw firmware blobs)
+- [x] Type system v1: primitive + struct/union/pointer types (data model +
+      C-like rendering) implemented; propagation through MLIL implemented
+      for stack-variable widths specifically (real evidence-based
+      assignment) — register/flag types, signedness, and pointer/struct
+      recovery are explicitly out of scope for v1, see docs/ARCHITECTURE.md
+- [x] Expand file-format coverage validation — PE validated
+      (`scripts/multiarch_smoke_test.sh`'s `pe64` case, via mingw-w64);
+      Mach-O not attempted (no Apple toolchain available in this
+      environment — a real, not fabricated, gap); raw firmware blobs not
+      yet tested
 
 ## Milestone 2 — Plugin API + headless completeness
 

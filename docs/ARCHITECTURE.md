@@ -86,7 +86,57 @@ binary (see the smoke test). Anything unhandled lifts to an explicit
 `Unimplemented(esil_text)` node rather than silently producing wrong IL —
 correctness over coverage.
 
-MLIL/HLIL are **not** implemented; `docs/ROADMAP.md` sequences them.
+## Medium-Level IL (MLIL) and SSA
+
+`il::buildMlil()` (`src/core/src/mlil_builder.cpp`) lifts LLIL to MLIL by
+promoting `Reg`/`Flag` reads and `SetReg`/`SetFlag` writes to named `Var`
+nodes, and — the actually useful part — recognizing stack-relative
+`Load`/`Store` (address shaped like `frame_reg +/- constant`, for a small
+cross-arch set of stack/frame register names) as reads/writes of a *named
+stack variable* instead of raw memory access. Repeated accesses to the same
+slot become the same variable, e.g. a store to `[rbp-4]` and a later load
+from `[rbp-4]` both become `var_4` — that's the actual value of this pass,
+not just cosmetic renaming.
+
+`il::buildMlilSsa()` (`src/core/src/mlil_ssa_builder.cpp`) then builds real
+SSA form on top: dominance-frontier-driven phi placement followed by a
+dominator-tree-order renaming pass (the standard Cytron/Ferrante/Rosen/
+Zadeck construction), using `analysis::DominatorTree`
+(`src/core/src/dominators.cpp`, unit-tested in `tests/dominators_test.cpp`
+against hand-built diamond/loop/unreachable-block CFGs with known answers).
+Every variable definition gets a fresh version; control-flow join points
+get explicit `Phi` expressions with one operand per predecessor edge.
+Verified against a real binary's if/else diamond in
+`scripts/ir_smoke_test.sh` (phi nodes appear exactly at the merge block;
+every SSA definition is checked to be genuinely unique, not just relabeled).
+
+Neither pass is architecture-specific — both operate purely on LLIL/MLIL's
+already-normalized expression trees, so they work unmodified across every
+architecture the multi-arch smoke test exercises (x86-64, ARM64, ARM32,
+MIPS) — see `scripts/multiarch_smoke_test.sh`.
+
+## Type system v1
+
+`compass::core::Type` (`src/core/include/compass/core/type.hpp`) models
+primitives, pointers, arrays, structs/unions, and function signatures, with
+C-like rendering (`render(const Type&)`). `il::attachTypes()`
+(`src/core/src/type_inference.cpp`) is the "propagate through MLIL" step —
+scoped honestly rather than aspirationally: it assigns an unsigned integer
+`Type` to every recovered stack variable, sized from the actual
+memory-access width that variable was promoted from (real evidence, so a
+real assignment). It deliberately does **not** attempt signedness inference,
+register/flag variable types (needs arch-specific register-width metadata
+not yet consumed from the backend), or pointer/struct recovery (needs
+cross-reference and usage analysis) — those are natural extensions of this
+same pass, not a rewrite, and are better attempted once the Ghidra
+decompiler integration (Milestone 3) exists to cross-check against.
+
+## High-Level IL (HLIL)
+
+Not yet implemented; `docs/ROADMAP.md` sequences it as the last piece of
+Milestone 1 (structuring MLIL's block graph into if/else and loop
+statements using the same `DominatorTree`, with a `Goto` fallback for
+whatever a bounded structuring pass doesn't recognize).
 
 ## Decompiler integration (planned)
 

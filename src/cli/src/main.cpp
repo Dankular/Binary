@@ -4,6 +4,8 @@
 
 #include "compass/core/backend.hpp"
 #include "compass/core/il/low_level_il.hpp"
+#include "compass/core/il/mlil_builder.hpp"
+#include "compass/core/il/type_inference.hpp"
 
 #include <iomanip>
 #include <iostream>
@@ -17,7 +19,7 @@ namespace {
 void printUsage(const char* argv0) {
     std::cerr << "Usage:\n"
               << "  " << argv0 << " --list-functions <binary>\n"
-              << "  " << argv0 << " --function <name> [--il] [--cfg] <binary>\n"
+              << "  " << argv0 << " --function <name> [--il] [--mlil] [--mlil-ssa] <binary>\n"
               << "  " << argv0 << " --info <binary>\n";
 }
 
@@ -58,12 +60,14 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    bool listFunctions = false, showInfo = false, showIL = false;
+    bool listFunctions = false, showInfo = false, showIL = false, showMLIL = false, showMLILSSA = false;
     std::string functionName, path;
     for (std::size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--list-functions") listFunctions = true;
         else if (args[i] == "--info") showInfo = true;
         else if (args[i] == "--il") showIL = true;
+        else if (args[i] == "--mlil") showMLIL = true;
+        else if (args[i] == "--mlil-ssa") showMLILSSA = true;
         else if (args[i] == "--function" && i + 1 < args.size()) functionName = args[++i];
         else path = args[i];
     }
@@ -101,9 +105,20 @@ int main(int argc, char** argv) {
         }
         Function fn = *found; // copy so we can lift IL into it
         printFunctionDisasm(fn);
-        if (showIL) {
+        if (showIL || showMLIL || showMLILSSA) {
             backend->liftLowLevelIL(fn);
+        }
+        if (showIL) {
             std::cout << "\n-- LLIL --\n" << il::render(*fn.llil);
+        }
+        if (showMLIL || showMLILSSA) {
+            fn.mlil = il::buildMlil(fn);
+            il::attachTypes(*fn.mlil);
+            std::cout << "\n-- MLIL --\n" << il::render(*fn.mlil);
+        }
+        if (showMLILSSA) {
+            fn.mlilSsa = il::buildMlilSsa(*fn.mlil);
+            std::cout << "\n-- MLIL SSA --\n" << il::render(*fn.mlilSsa);
         }
         return 0;
     }

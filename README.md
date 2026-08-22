@@ -54,6 +54,13 @@ Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
       `add`/`sub`, `push`/`pop`, `cmp`/`test`, `jmp`/`jcc`, `call`/`ret`)
 - [x] `compass-cli`: headless tool — load a binary, list functions, print
       disassembly + CFG edges + lifted LLIL for a chosen function
+- [x] MLIL + real SSA construction (stack variable recovery, dominance-
+      frontier phi placement) — `--mlil`/`--mlil-ssa`; validated cross-arch
+      (x86-64/ARM64/ARM32/MIPS) and against a real if/else diamond
+      (`scripts/ir_smoke_test.sh`, `scripts/multiarch_smoke_test.sh`)
+- [x] Type system v1 (primitives/pointers/arrays/structs/unions, C-like
+      rendering) with width-based propagation onto recovered stack
+      variables — see docs/ARCHITECTURE.md for exactly what's in scope
 - [x] Dynamic-sandbox groundwork: `ISandboxProvider` interface +
       `MockSandboxProvider`; verified-in-container proof that QEMU's TCG
       accelerator runs real code with no `/dev/kvm` (`scripts/tcg_probe.sh`);

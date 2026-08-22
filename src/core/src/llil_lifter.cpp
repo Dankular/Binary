@@ -16,6 +16,7 @@
 
 #include "compass/core/il/lifter.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <optional>
@@ -29,7 +30,11 @@ namespace compass::core::il {
 namespace {
 
 bool isFlagName(const std::string& tok) {
-    static const std::set<std::string> flags = {"zf", "cf", "sf", "of", "pf", "af", "df", "if", "tf"};
+    // x86: zf/cf/sf/of/pf/af/df/if/tf. ARM (32 and 64-bit): nf/zf/cf/vf
+    // (its N/Z/C/V condition flags, lowercased by radare2/Rizin's ESIL).
+    static const std::set<std::string> flags = {
+        "zf", "cf", "sf", "of", "pf", "af", "df", "if", "tf", "nf", "vf",
+    };
     return flags.count(tok) != 0;
 }
 
@@ -251,6 +256,41 @@ private:
 
         if (!tok.empty() && tok[0] == '$') {
             for (int i = 0; i < pseudoOpArgCount(tok); ++i) pop();
+            auto e = LLILExpr::make(LLILOp::Unimplemented);
+            e->text = tok;
+            push(e);
+            return;
+        }
+
+        // ESIL's stack-manipulation pseudo-ops (as opposed to register
+        // names). Radare2/Rizin write these in ALL-CAPS specifically so
+        // they're never ambiguous with a register — real register names
+        // across every architecture this lifter has been run against
+        // (x86: rax/zf; ARM: x0/sp/nf; MIPS: v0/gp/ra) are lowercase. That
+        // convention is what the ALL-CAPS fallback below relies on: without
+        // it, an unhandled pseudo-op like ARM64's DUP (seen lifting a real
+        // ARM64 binary — STP-style paired stores duplicate the stack top)
+        // would silently become `Reg("DUP")`, a fabricated register read
+        // that looks plausible and is simply wrong. Handling DUP/POP/CLEAR
+        // explicitly, and falling back to Unimplemented for any other
+        // ALL-CAPS token instead of Reg, keeps that failure mode from
+        // recurring for pseudo-ops not yet seen.
+        if (tok == "DUP") {
+            push(stack_.empty() ? LLILExpr::make(LLILOp::Unimplemented) : stack_.back());
+            return;
+        }
+        if (tok == "POP") {
+            pop();
+            return;
+        }
+        if (tok == "CLEAR") {
+            stack_.clear();
+            return;
+        }
+        bool isAllCaps = std::all_of(tok.begin(), tok.end(), [](unsigned char c) {
+            return std::isupper(c) || c == '_' || std::isdigit(c);
+        }) && std::isalpha(static_cast<unsigned char>(tok[0]));
+        if (isAllCaps) {
             auto e = LLILExpr::make(LLILOp::Unimplemented);
             e->text = tok;
             push(e);

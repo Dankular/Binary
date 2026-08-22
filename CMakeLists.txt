@@ -16,4 +16,9 @@ find_package(nlohmann_json 3.9 REQUIRED)
 add_subdirectory(src/core)
 add_subdirectory(src/cli)
 
+if(COMPASS_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
 message(STATUS "Compass: analysis backend = radare2 (target backend: Rizin, see docs/ARCHITECTURE.md)")

@@ -2,6 +2,7 @@
 
 #include "compass/core/basic_block.hpp"
 #include "compass/core/il/low_level_il.hpp"
+#include "compass/core/il/medium_level_il.hpp"
 #include "compass/core/types.hpp"
 
 #include <optional>
@@ -16,8 +17,14 @@ struct Function {
     std::vector<BasicBlock> basicBlocks;
 
     /// Lifted lazily by IAnalysisBackend::liftLowLevelIL(); absent until
-    /// then. MLIL/HLIL will follow the same optional-until-computed pattern.
+    /// then.
     std::optional<il::LLILFunction> llil;
+
+    /// Built from `llil` by il::buildMlil() / il::buildMlilSsa() (requires
+    /// `llil` to be populated first). HLIL follows the same
+    /// optional-until-computed pattern — see il/hlil_builder.hpp.
+    std::optional<il::MLILFunction> mlil;
+    std::optional<il::MLILSSAFunction> mlilSsa;
 
     const BasicBlock* blockAt(Address addr) const {
         for (const auto& bb : basicBlocks) {
