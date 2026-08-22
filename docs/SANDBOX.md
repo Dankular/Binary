@@ -28,6 +28,21 @@ prefer KVM opportunistically when `/dev/kvm` is present (see "Accelerator
 selection" below) — TCG is the floor this design guarantees, not the only
 mode it uses.
 
+**This isn't just a claim about `x86` toy code either — a real Linux
+distribution boots under it.** `scripts/linux_guest_probe.sh` downloads an
+official Debian 12 cloud image (checksummed against Debian's own
+`SHA512SUMS`), boots it under `-accel tcg` from a disposable qcow2 overlay
+(the same snapshot-per-run scheme described below), reaches a login prompt
+in well under a minute, logs in, runs a command over a serial-socket control
+channel, and confirms the output comes back — the same shape of channel a
+real in-guest agent will use to report syscalls/files/network activity.
+Run it yourself (downloads ~400MB on first run, cached under `.cache/`):
+
+```sh
+sudo apt-get install -y qemu-system-x86 python3
+./scripts/linux_guest_probe.sh
+```
+
 ## Design
 
 ```
@@ -129,19 +144,59 @@ real, separate pieces of work).
 ## Roadmap for this component
 
 1. ~~Prove TCG execution works in a plain container~~ — done, see above.
-2. `ISandboxProvider` + `DetonationReport` types + `MockSandboxProvider` —
-   done, see `src/core/include/compass/core/sandbox.hpp`.
-3. Acquire/build a minimal Linux guest qcow2 image with a boot-to-agent
-   init (a good candidate: a stripped Alpine or Debian cloud image, TCG
-   booted, cloud-init disabled, a static Go/Rust agent binary as PID 1's
-   child) — real work, not attempted in this pass.
-4. `QemuTcgSandboxProvider`: launch, wait for agent handshake over
-   virtio-serial, push the sample in, run it under a timeout, collect the
-   agent's syscall/file/process log, tear down the overlay.
-5. Network fakery: wire `-netdev user` DNS/proxy options at an
+2. ~~`ISandboxProvider` + `DetonationReport` types + `MockSandboxProvider`~~
+   — done, see `src/core/include/compass/core/sandbox.hpp`.
+3. ~~Boot a real Linux guest under TCG and control it over a serial
+   channel~~ — done, see `scripts/linux_guest_probe.sh` above. Uses
+   Debian's official `nocloud` cloud image directly rather than a custom
+   image, since it already boots straight to a root prompt with no
+   provisioning step needed.
+4. `QemuTcgSandboxProvider`: same boot+control pattern as the probe script,
+   generalized — push a sample in (e.g. via a virtio-9p share of a host
+   directory rather than typing bytes over the serial console), run it
+   under a timeout, collect an in-guest agent's syscall/file/process log
+   instead of just echoing a marker back.
+5. In-guest agent: a small static binary (Go or Rust — avoids needing a
+   libc match with the guest) that starts at boot, execs the pushed
+   sample, and reports syscalls/file events/network activity back over the
+   same serial or virtio-serial channel `linux_guest_probe.sh` already
+   proved works.
+6. Network fakery: wire `-netdev user` DNS/proxy options at an
    INetSim/FakeNet-NG instance; capture the pcap.
-6. Windows guest support (needs a licensed/legally-obtainable Windows
-   image — out of scope for this project to provide; document how to bring
-   your own).
-7. GUI surface for sandbox results (Milestone 4-adjacent, after the GUI
+7. **Windows guest support** — investigated, not built (see below for why).
+8. GUI surface for sandbox results (Milestone 4-adjacent, after the GUI
    itself exists).
+
+### Windows guest: what's feasible and what isn't
+
+Two existing open-source projects automate Windows installation into a
+QEMU VM without redistributing Windows itself — both fetch the ISO from
+Microsoft's own servers at build/run time rather than bundling it:
+
+- **[dockur/windows](https://github.com/dockur/windows)** (MIT) — the
+  more mature, widely-used reference implementation. Its own README states
+  KVM is **mandatory** with no TCG fallback path; it explicitly calls out
+  that even Docker Desktop's non-KVM setups aren't supported.
+- **cocoonstack/windows** — a similar *builder* (targets Cloud Hypervisor
+  rather than plain QEMU) that likewise requires the user to supply their
+  own Microsoft-signed ISO at build time rather than bundling one, and
+  also documents KVM as a requirement. Its GHCR package
+  (`ghcr.io/cocoonstack/windows/win11`), however, distributes a
+  **prebuilt, already-installed** ~14 GiB Windows qcow2 image — this
+  project deliberately does **not** pull that in. A prebuilt disk image
+  containing an installed copy of Windows is a redistribution of
+  Microsoft's copyrighted OS binaries by a third party, not an
+  installer that fetches from Microsoft — a materially different (and
+  murkier) licensing situation than either builder's own source. If you
+  want a Windows guest, build one yourself from a Windows license you
+  hold, using one of the builder projects above, not by pulling a
+  pre-built third party image.
+
+Both builders needing KVM is also a hard practical blocker here
+independent of licensing: this environment has no `/dev/kvm` (same as the
+main TCG proof above), and even where KVM *is* available, a full unattended
+Windows install is a multi-GB download plus a real install run — not
+something to attempt inside a quick verification pass. **Conclusion:**
+Windows guest support stays a documented "bring your own, on a host with
+KVM, using dockur/windows or equivalent" item, not something this project
+builds or ships an image for.

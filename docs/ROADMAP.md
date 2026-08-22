@@ -55,14 +55,20 @@ no "big bang" integration at the end.
       — `scripts/tcg_probe.sh`
 - [x] `ISandboxProvider` interface + `DetonationReport`/`SandboxProfile`
       types + `MockSandboxProvider` for testing
+- [x] Boot a real Linux guest (official Debian cloud image) under TCG from
+      a disposable qcow2 overlay, log in and run a command over a serial
+      control channel — `scripts/linux_guest_probe.sh`
 - [ ] Detonation report JSON schema
-- [ ] Guest image (minimal Linux, TCG-booted) + in-guest agent
-- [ ] `QemuTcgSandboxProvider`: QMP-driven launch/snapshot/collect, real
-      orchestrator (see docs/SANDBOX.md for the exact plan) — no longer
-      blocked on VM infrastructure the container doesn't have; blocked only
-      on building the guest image + agent, which is real remaining work
+- [ ] In-guest agent (static Go/Rust binary) reporting syscalls/files/
+      network activity back over that same channel
+- [ ] `QemuTcgSandboxProvider`: generalizes the probe script — push a
+      sample in, run under timeout, collect the agent's report
 - [ ] Annotation merge: dynamic coverage, syscalls, network IOCs onto the
       static model
+- [ ] Windows guest: investigated (see docs/SANDBOX.md) — both viable
+      builders (dockur/windows, cocoonstack/windows) require KVM, which
+      this environment doesn't have; stays a documented "bring your own on
+      a KVM host" item, not something this project builds/ships
 - [ ] GUI surface for sandbox results
 
 ## Milestone 6 — Debugger

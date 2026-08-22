@@ -55,9 +55,11 @@ Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - [x] `compass-cli`: headless tool — load a binary, list functions, print
       disassembly + CFG edges + lifted LLIL for a chosen function
 - [x] Dynamic-sandbox groundwork: `ISandboxProvider` interface +
-      `MockSandboxProvider`, and a verified-in-container proof that QEMU's
-      TCG accelerator runs real code with no `/dev/kvm` (`scripts/tcg_probe.sh`)
-      — see [docs/SANDBOX.md](docs/SANDBOX.md)
+      `MockSandboxProvider`; verified-in-container proof that QEMU's TCG
+      accelerator runs real code with no `/dev/kvm` (`scripts/tcg_probe.sh`);
+      a real Debian guest boots under TCG from a disposable overlay and
+      runs a command over a serial control channel
+      (`scripts/linux_guest_probe.sh`) — see [docs/SANDBOX.md](docs/SANDBOX.md)
 - [ ] Everything else in the feature table below — tracked in the roadmap.
 
 ## Building
@@ -110,7 +112,7 @@ Status legend: ✅ implemented · 🚧 in progress / partial · 📋 designed, n
 | Single sign-on (SSO) | ✅ | — | Project server milestone (OIDC) |
 | Access control & auditing | ✅ | — | Project server milestone |
 | Collaborative analysis | ✅ | — | Project server milestone (CRDT-based merge, like BN's) |
-| Sandbox / dynamic detonation (any.run-style)* | — (not a BN feature) | 🚧 | See [docs/SANDBOX.md](docs/SANDBOX.md) — QEMU **TCG** (no `/dev/kvm` needed, verified via `scripts/tcg_probe.sh`) snapshot VM + syscall/network capture, feeding back into static analysis. Interface + mock provider implemented; real guest image/agent is the next step |
+| Sandbox / dynamic detonation (any.run-style)* | — (not a BN feature) | 🚧 | See [docs/SANDBOX.md](docs/SANDBOX.md) — QEMU **TCG** (no `/dev/kvm` needed). A real Debian guest boots and runs commands over a serial channel today (`scripts/linux_guest_probe.sh`); remaining work is an in-guest agent + syscall/network capture. Windows guest is a documented bring-your-own-KVM-host item (both open builders investigated require KVM) |
 
 \* Added per project owner's request — not part of Binary Ninja's feature set, but a natural extension for a modern RE platform.
 
