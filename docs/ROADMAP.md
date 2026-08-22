@@ -59,7 +59,16 @@ no "big bang" integration at the end.
       after that), the same constraint most C++ plugin systems live with,
       not a stronger stable-ABI-across-compilers guarantee. See
       docs/ARCHITECTURE.md
-- [ ] Python bindings (pybind11) mirroring the C++ API
+- [x] Python bindings (pybind11) mirroring the C++ API — a deliberately
+      flat `compass.Session` API (load/info/list_functions/disassemble/
+      lift_llil/lift_mlil/lift_hlil/run_passes) rather than the full
+      typed object graph; see docs/ARCHITECTURE.md for the scope reasoning
+      and two real, Python-specific bugs this surfaced and fixed
+      (a double `dlerror()` read; plugin symbol resolution failing when
+      compass-core's code lives in a `RTLD_LOCAL`-loaded `compass.so`
+      rather than an executable). Validated end-to-end in
+      `scripts/python_smoke_test.sh`, including running a plugin's pass
+      from Python
 - [x] Plugin discovery/loading (dlopen-based for C++) — `PluginManager`,
       `IPlugin`/`PluginContext`, `COMPASS_DECLARE_PLUGIN`; validated with a
       real standalone example plugin (`plugins/example_io_flagger/`) via

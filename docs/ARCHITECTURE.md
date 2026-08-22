@@ -319,6 +319,48 @@ Building and validating this surfaced two real bugs, both fixed:
    choice most C++ plugin systems (LLVM, Qt) make for the same reason:
    load once, never unload, let process exit reclaim it.
 
+## Python bindings
+
+`src/bindings/python/compass_py.cpp` (pybind11) exposes a deliberately
+flat `compass.Session` API — `load`, `info`, `list_functions`,
+`disassemble`, `lift_llil`/`lift_mlil`/`lift_hlil` (return rendered text,
+same as the CLI), `run_passes` (loads plugins, runs a workflow, returns
+resulting annotations) — rather than the full C++ object graph
+(`Function`/`BasicBlock`/`MLILExpr` as live Python classes referencing into
+a shared `Binary`). That richer binding is real future work once something
+needs it (a Python plugin building its own analysis over the IL tree);
+solving its ownership/lifetime questions (who keeps a `Binary` alive while
+Python holds one of its `Function`s, mutation through the same passes the
+CLI runs) isn't free, and the flat API is a substantially simpler, fully
+working slice to ship first — see `scripts/python_smoke_test.sh`.
+
+Two real, environment-specific bugs turned up validating this — both in
+`plugin_manager.cpp`, both invisible from the C++/CLI path because it
+happened not to exercise them:
+
+1. **`dlerror()` read twice.** `error = dlerror() ? dlerror() : "..."`
+   calls `dlerror()` twice; it clears its stored message as a side effect
+   of being read, so the second call (the one actually assigned) always
+   sees it already cleared and returns null. Assigning that null to a
+   `std::string` crashes — this had been sitting dormant because the CLI
+   path had never actually hit a `dlopen` *failure*, so the buggy branch
+   never ran. Fixed by reading it exactly once.
+2. **Plugin symbols unresolved when the host is `compass.so`, not an
+   executable.** `compass-cli` is built with `ENABLE_EXPORTS`
+   (`-rdynamic`), so a plugin it `dlopen`s can resolve symbols like
+   `PassRegistry::instance()` back into its statically-linked
+   compass-core. Python's import machinery loads `compass.so` with
+   `RTLD_LOCAL` by default, though — those same symbols aren't globally
+   visible from there, so a plugin's `dlopen` (with `RTLD_NOW`, which
+   resolves eagerly) failed outright with `undefined symbol:
+   PassRegistry::registerPass`. Fixed with the standard technique for
+   exactly this "an extension module that itself loads plugins" shape:
+   `promoteSelfToGlobalScope()` uses `dladdr` to find the object containing
+   compass-core's own code, then `dlopen`s that same path again with
+   `RTLD_GLOBAL` — re-opening an already-loaded object by matching path
+   just bumps its reference count and promotes its scope, it doesn't map a
+   second copy. A no-op (already global) when the caller is `compass-cli`.
+
 ## Dynamic analysis sandbox
 
 See [SANDBOX.md](SANDBOX.md) — this is architecturally a separate service

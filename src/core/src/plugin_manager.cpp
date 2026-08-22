@@ -4,8 +4,44 @@
 #include <dirent.h>
 
 #include <cstring>
+#include <mutex>
 
 namespace compass::core {
+
+namespace {
+
+/// Ensures the object containing compass-core's own code is loaded with
+/// RTLD_GLOBAL, so a plugin's undefined references back into it (e.g.
+/// PassRegistry::instance()) can actually resolve. Needed because that
+/// object isn't always the main executable:
+///
+/// - In compass-cli, compass-core is statically linked into the
+///   executable, and ENABLE_EXPORTS (-rdynamic, see src/cli/CMakeLists.txt)
+///   already makes an executable's own symbols globally visible to
+///   anything it dlopen()s — this call is a harmless no-op there.
+/// - In the Python bindings, compass-core is statically linked into
+///   compass.so, which Python's import machinery loads with RTLD_LOCAL by
+///   default. A plugin dlopen()d from there previously failed outright
+///   ("undefined symbol: PassRegistry::registerPass") — RTLD_NOW makes
+///   dlopen() itself fail eagerly on any unresolved symbol, rather than
+///   deferring the failure to first use. Caught by actually running the
+///   plugin smoke test through the Python bindings, not anticipated up
+///   front.
+///
+/// dladdr finds which loaded object contains this very function; dlopen()
+/// on an already-loaded object (matched by path) just bumps its refcount
+/// and returns the existing handle — this doesn't map a second copy.
+void promoteSelfToGlobalScope() {
+    static std::once_flag once;
+    std::call_once(once, [] {
+        Dl_info info;
+        if (dladdr(reinterpret_cast<void*>(&promoteSelfToGlobalScope), &info) && info.dli_fname) {
+            dlopen(info.dli_fname, RTLD_NOW | RTLD_GLOBAL);
+        }
+    });
+}
+
+} // namespace
 
 PluginManager::~PluginManager() {
     // Deliberately does NOT dlclose() — see the header's real-bug note.
@@ -25,12 +61,22 @@ PluginManager::~PluginManager() {
 }
 
 bool PluginManager::loadPlugin(const std::string& path, std::string& error) {
+    promoteSelfToGlobalScope();
+
     // RTLD_NOW (not LAZY): a plugin with an unresolved symbol should fail
     // to load loudly, right here, rather than crash later mid-analysis the
     // first time the missing symbol is actually called.
     void* handle = dlopen(path.c_str(), RTLD_NOW);
     if (!handle) {
-        error = dlerror() ? dlerror() : "dlopen failed";
+        // dlerror() clears its stored message as a side effect of being
+        // read — `dlerror() ? dlerror() : ...` calls it twice, so the
+        // second call (the one actually used) always sees it already
+        // cleared and returns null. Assigning that null to a std::string
+        // crashes. Caught by an actual dlopen failure hitting this path
+        // during Python-bindings testing (see promoteSelfToGlobalScope()
+        // above for what that real failure was) — read it exactly once.
+        const char* msg = dlerror();
+        error = msg ? msg : "dlopen failed";
         return false;
     }
 

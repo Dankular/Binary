@@ -85,6 +85,12 @@ Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
       (`plugins/example_io_flagger/`) — validated end-to-end
       (`scripts/plugin_smoke_test.sh`), including two real bugs this
       caught and fixed (see docs/ARCHITECTURE.md)
+- [x] Python bindings (pybind11): `compass.Session` — load a binary, list
+      functions, lift LLIL/MLIL(+SSA)/HLIL as text, run a workflow
+      (including plugin-supplied passes) — validated end-to-end from real
+      Python (`scripts/python_smoke_test.sh`), including two real
+      environment-specific bugs this surfaced and fixed (see
+      docs/ARCHITECTURE.md)
 - [x] Dynamic-sandbox groundwork: `ISandboxProvider` interface +
       `MockSandboxProvider`; verified-in-container proof that QEMU's TCG
       accelerator runs real code with no `/dev/kvm` (`scripts/tcg_probe.sh`);
@@ -115,12 +121,21 @@ rm -rf build && cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build -j
 ```
 
+Python bindings build automatically when `pybind11-dev` and a matching
+`python3-dev` are found (optional — the C++ build doesn't need them):
+
+```sh
+sudo apt-get install -y pybind11-dev python3-dev
+```
+
 Run the tests:
 
 ```sh
 ./scripts/smoke_test.sh            # core pipeline against a real binary
 ./scripts/ir_smoke_test.sh         # MLIL/SSA/HLIL, incl. dominator unit tests
 ./scripts/multiarch_smoke_test.sh  # x86-64/ARM64/ARM32/MIPS/PE64 (needs cross-compilers)
+./scripts/plugin_smoke_test.sh     # plugin API: dlopen a real example plugin, run its pass
+./scripts/python_smoke_test.sh     # Python bindings, incl. running a plugin's pass from Python
 ./scripts/tcg_probe.sh             # sandbox groundwork: QEMU TCG works with no /dev/kvm
 ./scripts/linux_guest_probe.sh     # sandbox groundwork: real guest boot + serial control
 ```
@@ -143,7 +158,7 @@ Status legend: ✅ implemented · 🚧 in progress / partial · 📋 designed, n
 | Debugger | ✅ | — | `rz_debug`/`r_debug` backends (ptrace/gdbserver/WinDbg) behind `IDebuggerBackend` |
 | "Sidekick"-capable (AI assist) | ✅ (partial purchase) | — | Optional plugin calling any LLM API; no vendor lock-in |
 | Full BNIL introspection | ✅ | 🚧 | LLIL, MLIL (+ real SSA), and HLIL (dominator-based if/else + loop structuring) all implemented; MLIL-SSA-based HLIL construction and richer type propagation are the natural next steps |
-| Plugin API | ✅ | 📋 | C++ core API + Python bindings (pybind11), stable ABI boundary |
+| Plugin API | ✅ | 🚧 | C++ core API (dlopen-based, `IAnalysisPass`/`PassRegistry`/`PluginManager`) + Python bindings (pybind11) both implemented and validated end-to-end; a stable *cross-compiler* ABI (vs. today's same-compiler-toolchain boundary) is real, separate future work |
 | Plugin manager / community plugins | ✅ | — | Package index + in-app manager, after plugin API lands |
 | Workflows (custom analysis pipelines) | ✅ | — | Pass-based analysis pipeline over the IL, user-scriptable |
 | Headless/GUI-less processing | ✅ | ✅ | `compass-cli` today; full headless API planned |
