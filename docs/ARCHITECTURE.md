@@ -408,6 +408,65 @@ happened not to exercise them:
    just bumps its reference count and promotes its scope, it doesn't map a
    second copy. A no-op (already global) when the caller is `compass-cli`.
 
+### Python-side plugin loading
+
+`compass.AnalysisPass` (a pybind11 trampoline for `IAnalysisPass`) plus
+`compass.register_pass()` let a pass be authored *in* Python and
+registered into the same process-wide `PassRegistry` a C++ `.so` plugin's
+`IPlugin::onLoad()` uses — no changes needed to `Workflow`/
+`Session.run_passes()`, which already resolve pass names against that
+registry at run time regardless of which side registered a given name.
+`src/bindings/python/compass_plugins.py` is the actual `importlib`
+discovery loop (pure Python — nothing to bind for that part): it imports
+every `.py` file in a directory and calls its `register()` function, the
+Python-side equivalent of `onLoad()`. See
+`plugins/example_py_io_flagger/io_flagger.py` for a real example (the
+Python-authored counterpart to `example_io_flagger`'s C++ pass — working
+off `Function.disassembly()`'s flat data, not the MLIL tree, since that's
+deliberately not exposed to Python yet, per this doc's own note above).
+
+Two more real, Python-specific bugs turned up validating *this* — both in
+`compass_py.cpp`:
+
+1. **A pass's own mutations were silently discarded.** `IAnalysisPass::run(const Binary&, Function&)`
+   takes `Function&` so a pass can push new annotations onto the real
+   object. The trampoline's first version used `PYBIND11_OVERRIDE_PURE`
+   for `run()` like `name()`/`description()` — but that macro casts its
+   arguments with `return_value_policy::automatic_reference`, which
+   pybind11's own `cast()` resolves to **`copy`**, not `reference`, for
+   *any* lvalue-reference argument (only a raw pointer gets `reference`
+   there — confirmed by reading pybind11's own `cast.h`, not assumed).
+   So every call into a Python pass's `run()` handed it a throwaway copy
+   of `fn`: `fn.add_annotation(...)` appeared to work inside the call (no
+   error, correct data visible), but the mutation never reached the
+   `Function` `Workflow::run()` was actually holding — every Python pass
+   silently produced zero annotations. Fixed by hand-building the
+   override call instead of using the macro, casting both arguments with
+   an explicit `reference` policy.
+2. **A registered pass could be garbage-collected before it ever ran.**
+   The natural shape for a plugin's `register()` — construct a pass,
+   call `compass.register_pass(pass)`, return — leaves no Python variable
+   referencing the pass afterward. `PassRegistry` still holds a
+   `std::shared_ptr<IAnalysisPass>` to it, but that alone didn't keep the
+   underlying `PyObject` alive: the object was collected as soon as
+   `register()` returned, and the next call into it raised `Tried to call
+   pure virtual function "IAnalysisPass::run"` — reproduced directly with
+   a minimal register()-shaped script (construct, register, return,
+   `gc.collect()`, then run) before trusting the diagnosis. Fixed by
+   having `register_pass()` pin a real Python reference to every
+   registered pass in a module-level container for the process's
+   lifetime — deliberately a leaked heap pointer, not a plain static
+   `std::vector`, because a plain static's destructor runs at process
+   exit in unspecified order relative to `Py_Finalize()`: hit that
+   directly too (`Fatal Python error: PyThreadState_Get` — GIL/thread
+   state already gone) before switching to a pointer that's never
+   destroyed. Same root cause and same fix `PluginManager`'s own
+   destructor doc note already describes for never `dlclose()`-ing a
+   plugin: destroying something whose lifetime the runtime has already
+   ended crashes, so don't run that destructor at all.
+
+Verified end to end — `scripts/python_plugin_smoke_test.sh`.
+
 ## Signature/FLIRT-style function matching
 
 `IAnalysisBackend::exportSignatures()`/`applySignatures()` — "has this

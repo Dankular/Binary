@@ -6,3 +6,5 @@ compile_commands.json
 .cache/
 *.iso
 *.qcow2
+__pycache__/
+*.pyc

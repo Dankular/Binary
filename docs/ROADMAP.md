@@ -71,7 +71,7 @@ everything it would sit on top of already exists and works.
       would be the scheduler on top of that. Unscoped — needs a design
       pass before it's a real task, not just a name
 
-## Milestone 2 — Plugin API + headless completeness (core complete; Python-side plugin loading and a richer Python object-graph binding are documented follow-ons)
+## Milestone 2 — Plugin API + headless completeness (core complete, including Python-side plugin loading; a richer Python object-graph binding is a documented follow-on)
 
 - [x] Stabilize C++ core API headers as the plugin ABI boundary — real
       caveat, not glossed over: this is a same-compiler/same-stdlib-ABI
@@ -97,10 +97,8 @@ everything it would sit on top of already exists and works.
       mistake; a dlclose()-vs-vtable-lifetime segfault at process exit) —
       see docs/ARCHITECTURE.md. Python-side plugin loading (`importlib`-
       discovered plugins written *in* Python, not just calling the C++
-      API *from* Python — the Python bindings item above only shipped the
-      latter) was noted as waiting on the Python bindings item; that
-      shipped and this was never revisited — still not done, tracked
-      properly below instead of left implicit
+      API *from* Python — this dlopen-based item only ever covered C++
+      plugins) is its own separate item below, now also done
 - [x] Workflows: pass-based analysis pipeline, user-registerable passes —
       `IAnalysisPass`/`PassRegistry`/`Workflow`; two built-in passes
       (`lift-all`, `callgraph`) plus the example plugin's `flag-io-callers`
@@ -116,11 +114,27 @@ everything it would sit on top of already exists and works.
       re-identified at a genuinely different address in a different,
       stripped binary, not a same-offset coincidence — for both backends
       (`scripts/signature_smoke_test.sh`)
-- [ ] Python-side plugin loading: `importlib`-discovered plugins written
+- [x] Python-side plugin loading: `importlib`-discovered plugins written
       *in* Python (a `PluginManager` counterpart for Python authors), not
-      just today's ability to call the C++ API from a Python script. See
-      the note above — flagged as blocked on the Python bindings item,
-      those shipped, this was never picked back up
+      just calling the C++ API from a Python script. `compass.AnalysisPass`
+      (a pybind11 trampoline for `IAnalysisPass`) plus `compass.register_pass()`
+      let a Python class register directly into the same process-wide
+      `PassRegistry` a C++ .so plugin's `IPlugin::onLoad()` uses — no
+      special-casing needed in `Workflow`/`Session.run_passes()`, which
+      already resolve pass names against that registry at run time
+      regardless of which side registered a given name.
+      `src/bindings/python/compass_plugins.py` is the actual `importlib`
+      discovery loop (pure Python, nothing to bind); a plugin file exports
+      a `register()` function, the Python-side equivalent of `onLoad()`.
+      Real example: `plugins/example_py_io_flagger/io_flagger.py` (the
+      Python-authored counterpart to `example_io_flagger`'s C++ pass,
+      working off disassembly-level data rather than the MLIL tree, since
+      that's deliberately not exposed — see the "Richer Python bindings"
+      item above). Two real bugs found and fixed getting a pass's own
+      mutation of the function it's given to actually persist (not just
+      appear to work inside the call) — see docs/ARCHITECTURE.md's Python
+      bindings section. Verified end to end —
+      `scripts/python_plugin_smoke_test.sh`
 - [ ] Richer Python bindings: today's `compass.Session` API is
       deliberately flat (returns rendered text, not live objects); a
       Python plugin building its own analysis over the IL tree needs
