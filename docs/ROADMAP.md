@@ -130,7 +130,7 @@ everything it would sit on top of already exists and works.
       mutation through the same passes the CLI runs), not attempted yet;
       see ARCHITECTURE.md's Python bindings section
 
-## Milestone 3 — Decompiler (text-output integration and type system v1 signedness inference complete; p-code → MLIL translation and the rest of type system v1 extensions — register/flag types, pointer/struct recovery — are documented follow-ons)
+## Milestone 3 — Decompiler (text-output integration, p-code → MLIL translation, and type system v1 signedness inference complete; the rest of type system v1 extensions — register/flag types, pointer/struct recovery — is a documented follow-on)
 
 - [x] `IAnalysisBackend::decompile()`, implemented by `RizinBackend` over
       rz-ghidra — a self-contained port of Ghidra's C++ decompiler (no
@@ -150,12 +150,22 @@ everything it would sit on top of already exists and works.
 - [x] Interim: real Ghidra-decompiler text-output view (rz-ghidra) — done
       as above, ahead of and instead of a hand-rolled `r2dec`/`r2ghidra`
       text shim
-- [ ] p-code → MLIL translation — deferred, not attempted in this pass;
-      `pdgj`'s per-token `annotations` (address/syntax-class/variable
-      identity per span) already returned by the current integration are
-      exactly what this would be built on. See docs/DECOMPILER.md's scope
-      note for why this is real, separate work rather than a quick
-      follow-on to the text-output integration above.
+- [x] p-code → MLIL translation: `IAnalysisBackend::pcodeMlil()` /
+      `il::translatePcode()` (`src/core/src/pcode_translator.cpp`) parses
+      rz-ghidra's `pdgx` p-code XML (the real source, not `pdgj`'s
+      rendered-text `annotations` this item originally assumed — see
+      docs/DECOMPILER.md) and translates it into a real MLILFunction:
+      arithmetic/logic/comparison/control-flow/load-store/call ops, array
+      indexing (PTRADD), and phi (MULTIEQUAL) merges folded away via
+      Ghidra's own HighVariable naming where that's provably safe,
+      Unimplemented (carrying Ghidra's real opcode name) everywhere else.
+      Opcode numbers cross-checked directly against Ghidra's own vendored
+      `opcodes.hh`. Verified against 3 real fixtures (arithmetic, an
+      if/else chain with two real phi merges, a loop with array indexing
+      and a call) — `scripts/pcode_translation_smoke_test.sh`. See
+      docs/DECOMPILER.md for the full design and what's still
+      `Unimplemented` (float ops, struct/pointer-aware ops, indirect
+      calls) as real, separate follow-on work.
 - [x] ~~`GhidraDecompilerBackend` (full Ghidra pipe integration)~~ —
       superseded, no longer planned: rz-ghidra above delivers the same
       underlying decompiler without the undocumented/version-sensitive

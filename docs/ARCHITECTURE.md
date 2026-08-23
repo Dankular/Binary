@@ -278,9 +278,12 @@ See [DECOMPILER.md](DECOMPILER.md) — `IAnalysisBackend::decompile()`,
 implemented by `RizinBackend` over rz-ghidra: a self-contained port of
 Ghidra's C++ decompiler (no JVM, no full Ghidra install) that Rizin
 dlopen's as a plugin. Reuse over reimplementation, same principle as the
-Rizin/radare2 backends themselves — the original plan here (parse Ghidra's
-p-code back into our own MLIL) is real, separate work, tracked as a
-follow-on rather than done in this pass; see DECOMPILER.md's scope note.
+Rizin/radare2 backends themselves. The original plan here — parsing
+Ghidra's p-code back into our own MLIL — is also implemented, as
+`IAnalysisBackend::pcodeMlil()` / `il::translatePcode()`; see
+DECOMPILER.md for the real p-code XML source this turned out to need
+(`pdgx`, not the rendered-text `annotations` an earlier draft assumed) and
+its opcode-mapping design.
 
 ## Debugger integration
 

@@ -35,6 +35,7 @@ void printUsage(const char* argv0) {
               << "  " << argv0 << " --detonate <sample> [--guest-image <qcow2>] [--timeout <secs>] [--merge-annotations]\n"
               << "  " << argv0 << " --detonate <sample> --windows-iso <path-or-VERSION> [--timeout <secs>]\n"
               << "  " << argv0 << " --function <name> --decompile <binary>\n"
+              << "  " << argv0 << " --function <name> --pcode-mlil <binary>\n"
               << "  " << argv0 << " --debug <path> [--debug-arg <arg>]... [--break <symbol>]... [--timeout <secs>] [--poke-stack <hexbytes>]\n";
 }
 
@@ -126,7 +127,8 @@ int main(int argc, char** argv) {
     }
 
     bool listFunctions = false, showInfo = false, showIL = false, showMLIL = false, showMLILSSA = false,
-         showHLIL = false, listPasses = false, showDecompile = false, mergeAnnotations = false;
+         showHLIL = false, listPasses = false, showDecompile = false, showPcodeMlil = false,
+         mergeAnnotations = false;
     std::string functionName, path, exportSignaturesPath, applySignaturesPath;
     std::string detonatePath, guestImagePath, windowsIsoOrVersion;
     std::string debugPath;
@@ -150,6 +152,7 @@ int main(int argc, char** argv) {
         else if (args[i] == "--mlil-ssa") showMLILSSA = true;
         else if (args[i] == "--hlil") showHLIL = true;
         else if (args[i] == "--decompile") showDecompile = true;
+        else if (args[i] == "--pcode-mlil") showPcodeMlil = true;
         else if (args[i] == "--list-passes") listPasses = true;
         else if (args[i] == "--function" && i + 1 < args.size()) functionName = args[++i];
         else if (args[i] == "--plugin" && i + 1 < args.size()) pluginPaths.push_back(args[++i]);
@@ -377,6 +380,15 @@ int main(int argc, char** argv) {
             std::cout << "\n-- decompiled --\n";
             printDecompiledFunction(decompiled);
             if (!decompiled.success) return 1;
+        }
+        if (showPcodeMlil) {
+            auto translated = backend->pcodeMlil(fn.entry);
+            std::cout << "\n-- p-code MLIL --\n";
+            if (!translated.success) {
+                std::cout << "error: " << translated.error << "\n";
+                return 1;
+            }
+            std::cout << il::render(translated.mlil);
         }
 
         if (!passNames.empty()) {

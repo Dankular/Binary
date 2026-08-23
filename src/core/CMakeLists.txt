@@ -18,6 +18,7 @@ add_library(compass-core STATIC
     src/hlil_builder.cpp
     src/workflow.cpp
     src/plugin_manager.cpp
+    src/pcode_translator.cpp
 )
 
 target_include_directories(compass-core PUBLIC
@@ -26,9 +27,17 @@ target_include_directories(compass-core PUBLIC
 
 find_package(Threads REQUIRED)
 
+# expat: a small, standard system XML parser (libexpat1-dev) — used only by
+# pcode_translator.cpp to parse rz-ghidra's `pdgx` XML output (see
+# docs/DECOMPILER.md). Required unconditionally (not gated on Rizin below):
+# the parser itself has no Rizin dependency, only RizinBackend::pcodeMlil()
+# actually calls it at runtime.
+find_package(EXPAT REQUIRED)
+
 target_link_libraries(compass-core
     PUBLIC PkgConfig::R_CORE
     PRIVATE nlohmann_json::nlohmann_json
+    PRIVATE EXPAT::EXPAT
     PUBLIC ${CMAKE_DL_LIBS}
     PUBLIC Threads::Threads
 )

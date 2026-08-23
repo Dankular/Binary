@@ -10,7 +10,14 @@
 
 namespace compass::core::il {
 
-enum class MLILVarKind { Register, Flag, Stack };
+/// Temp: a pure SSA-form scratch value with no physical storage at all —
+/// distinct from Register (a real physical register, even if this milestone
+/// doesn't know its mnemonic). Introduced for il::translatePcode()
+/// (pcode_translator.cpp): rz-ghidra's p-code carries genuine SSA
+/// temporaries in its own "unique" address space, and representing those
+/// as Register would misrepresent them as real machine state. Never
+/// produced by the ESIL-driven mlil_builder.cpp pipeline.
+enum class MLILVarKind { Register, Flag, Stack, Temp };
 
 /// A named variable: either a passthrough of an LLIL register/flag, or a
 /// recovered stack slot (e.g. `var_4` for what LLIL saw as

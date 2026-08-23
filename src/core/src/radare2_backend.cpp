@@ -146,6 +146,15 @@ public:
         return result;
     }
 
+    // Same scoping as decompile() above — p-code translation is backed by
+    // the same rz-ghidra plugin, Rizin-only.
+    il::PcodeTranslationResult pcodeMlil(Address) override {
+        il::PcodeTranslationResult result;
+        result.success = false;
+        result.error = "p-code translation requires the Rizin backend (see docs/DECOMPILER.md)";
+        return result;
+    }
+
 private:
     RCore* core_ = nullptr;
     Binary binary_;

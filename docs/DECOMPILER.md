@@ -52,15 +52,65 @@ built from our own MLIL/SSA. rz-ghidra's decompiler is a **second,
 separate view**, backed by Ghidra's mature type/calling-convention
 inference, not a replacement for HLIL or a data source HLIL consumes (yet).
 
-**Deferred, tracked as real follow-on work, not silently dropped:**
-mapping rz-ghidra's p-code output back into Compass's own MLIL/HLIL (the
-original plan sketched in an early draft of ARCHITECTURE.md) — the
-per-token `annotations` array `pdgj` already returns (address, syntax
-class, variable identity per span) is exactly what such a mapping would be
-built on, and is sitting unused in the current implementation. This is
-real, separate engineering (an AST/p-code walker, symbol correlation
-against our own stack-variable naming), scoped out of this pass rather
-than attempted alongside the debugger work in the same session.
+## p-code → MLIL translation
+
+The follow-on this doc used to track as deferred — mapping rz-ghidra's
+p-code output back into Compass's own IL — is implemented:
+`IAnalysisBackend::pcodeMlil(Address entry)` / `il::translatePcode()`
+(`src/core/src/pcode_translator.cpp`). It turned out the original plan
+(building on `pdgj`'s per-token `annotations` array — address, syntax
+class, variable identity per rendered-text span) was the wrong source
+entirely: `annotations` only describes *rendered text*, not real p-code
+operations. The actual source is a different rz-ghidra command, `pdgx`,
+which dumps Ghidra's real p-code AST as XML — varnodes, per-block
+operations (opcode + operands as varnode references), and inter-block
+control-flow edges. This translator parses that XML (via expat — already
+a standard system dependency, not a new one) and walks it directly into a
+plain (non-SSA) `MLILFunction`, the same type `mlil_builder.cpp`'s
+ESIL-driven pipeline produces — so it's a genuinely *second*, independent
+MLIL for the same function, not a replacement for the first.
+
+**Variable naming and phi folding.** A varnode's identity comes from
+`pdgx`'s `<highlist>`: each `<high>` element groups every p-code SSA
+version of one logical variable, with a `symref` into `<localdb>`'s symbol
+table when Ghidra bound it to a real named parameter/local — confirmed
+directly against real output, e.g. a local's `<high>` listing 5 different
+varnode refs (one per SSA version across the whole function) as members,
+all resolving to the same name Ghidra itself chose (`var_ch`, `a`, `b`,
+...). Because Compass's plain MLIL already allows one variable name to be
+reassigned many times, and Ghidra's own HighVariable grouping already
+unifies every SSA version of one logical variable under one name, a
+MULTIEQUAL (p-code's phi node) whose output and every input resolve to
+that same name is *already* fully represented by ordinary reassignment —
+verified directly against a real if/else-chain fixture (`max3`, two
+independent phi merges) before trusting it. A MULTIEQUAL that doesn't
+satisfy that check falls back to `Unimplemented` rather than risk emitting
+something silently wrong.
+
+**Opcode coverage.** Ghidra's p-code opcode numbers were cross-checked
+directly against the vendored Ghidra decompiler's own `opcodes.hh`, not
+recalled from memory. Arithmetic/logic/comparison ops (`INT_ADD`,
+`INT_SDIV`, `INT_SLESS`, ...), control flow (`BRANCH`, `CBRANCH`, `CALL`,
+`RETURN`), `LOAD`/`STORE`, `COPY`, and `PTRADD` (array/pointer indexing —
+`base + index*elementSize`, verified against a real `arr[i]` fixture) all
+map to real `MLILOp`s. Everything else — float ops, `SUBPIECE`/`CAST`
+(truncation/reinterpretation), `PTRSUB` (struct field access),
+`CALLIND`/`CALLOTHER`, flag-test ops with no `MLILOp` equivalent — becomes
+an `Unimplemented` expression carrying Ghidra's own opcode name and every
+available operand, the same never-silently-misrepresent fallback
+`llil_lifter.cpp` already uses for unrecognized ESIL tokens. Extending
+that coverage (pointer/struct-aware ops especially) is real, separate
+follow-on work, same honest scoping as type system v1's remaining pieces
+in ROADMAP.md — not attempted here since it depends on pointer/struct
+recovery this project doesn't have yet either.
+
+Verified end to end against 3 real fixtures —
+`scripts/pcode_translation_smoke_test.sh` — chosen to exercise arithmetic,
+the phi-folding design (an if/else chain with two real MULTIEQUAL merges),
+and control-flow reconstruction + pointer arithmetic + calls together (a
+for-loop over an array, calling another function).
+
+`compass-cli --function <name> --pcode-mlil <binary>` prints the result.
 
 ## Backend scope: Rizin only
 

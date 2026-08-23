@@ -16,7 +16,13 @@ namespace compass::core::il {
 namespace {
 
 std::string varKey(const MLILVar& v) {
-    char k = v.kind == MLILVarKind::Register ? 'r' : v.kind == MLILVarKind::Flag ? 'f' : 's';
+    char k = 'r';
+    switch (v.kind) {
+        case MLILVarKind::Register: k = 'r'; break;
+        case MLILVarKind::Flag: k = 'f'; break;
+        case MLILVarKind::Stack: k = 's'; break;
+        case MLILVarKind::Temp: k = 't'; break;
+    }
     return std::string(1, k) + ":" + v.name;
 }
 

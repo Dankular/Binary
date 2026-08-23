@@ -87,12 +87,27 @@ void renderTo(const MLILExpr& e, std::ostringstream& os) {
             os << "goto 0x" << std::hex << e.trueTarget << std::dec;
             return;
         case MLILOp::Call:
+            // operands[0] = target; any further operands are call arguments
+            // — only il::translatePcode() (pcode_translator.cpp) populates
+            // these today, mlil_builder.cpp's ESIL-driven Call never has
+            // more than the target, so this is purely additive.
             os << "call(";
             if (!e.operands.empty()) renderTo(*e.operands[0], os);
+            for (std::size_t i = 1; i < e.operands.size(); ++i) {
+                os << ", ";
+                renderTo(*e.operands[i], os);
+            }
             os << ")";
             return;
         case MLILOp::Ret:
-            os << "<return>";
+            // Same story as Call above: operands[0] (the return value) is
+            // only ever populated by il::translatePcode().
+            os << "<return";
+            if (!e.operands.empty()) {
+                os << " ";
+                renderTo(*e.operands[0], os);
+            }
+            os << ">";
             return;
         case MLILOp::Nop:
             os << "nop";

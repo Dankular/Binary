@@ -164,6 +164,16 @@ public:
         return result;
     }
 
+    // `pdgx @ <addr>` dumps the same rz-ghidra decompilation's *p-code AST*
+    // as XML (not the JSON pdgj above) — see il::translatePcode() and
+    // pcode_translator.cpp's file header for the schema this is built on
+    // and how each opcode maps to Compass's own MLIL. Raw text via
+    // runCmd(), not runJson(): pdgx's output is XML, not JSON.
+    il::PcodeTranslationResult pcodeMlil(Address entry) override {
+        std::string xml = runCmd("pdgx @ " + std::to_string(entry));
+        return il::translatePcode(xml, entry);
+    }
+
 private:
     RzCore* core_ = nullptr;
     Binary binary_;

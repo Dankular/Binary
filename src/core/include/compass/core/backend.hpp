@@ -2,6 +2,7 @@
 
 #include "compass/core/binary.hpp"
 #include "compass/core/il/low_level_il.hpp"
+#include "compass/core/il/pcode_translator.hpp"
 
 #include <memory>
 #include <string>
@@ -83,6 +84,14 @@ public:
     /// parallel radare2/r2ghidra integration — same chosen-primary-backend
     /// scoping already documented for signature matching.
     virtual DecompiledFunction decompile(Address entry) = 0;
+
+    /// Translates rz-ghidra's p-code for the function at `entry` directly
+    /// into Compass's own MLIL (docs/DECOMPILER.md's "p-code → MLIL
+    /// translation" item — see il::translatePcode() for the full design).
+    /// Same backend scoping as decompile(): implemented only by
+    /// RizinBackend, over the same rz-ghidra plugin; Radare2Backend
+    /// returns a clear unsupported-feature result.
+    virtual il::PcodeTranslationResult pcodeMlil(Address entry) = 0;
 };
 
 std::unique_ptr<IAnalysisBackend> makeRadare2Backend();
