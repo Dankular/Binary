@@ -74,8 +74,12 @@ MLILOp mapBinOp(LLILOp op) {
         case LLILOp::Xor: return MLILOp::Xor;
         case LLILOp::Shl: return MLILOp::Shl;
         case LLILOp::Shr: return MLILOp::Shr;
+        case LLILOp::Sar: return MLILOp::Sar;
         case LLILOp::Mul: return MLILOp::Mul;
         case LLILOp::Div: return MLILOp::Div;
+        case LLILOp::SDiv: return MLILOp::SDiv;
+        case LLILOp::Mod: return MLILOp::Mod;
+        case LLILOp::SMod: return MLILOp::SMod;
         case LLILOp::Cmp: return MLILOp::Cmp;
         default: return MLILOp::Unimplemented;
     }
@@ -163,8 +167,12 @@ MLILExprPtr transform(const LLILExprPtr& e) {
         case LLILOp::Xor:
         case LLILOp::Shl:
         case LLILOp::Shr:
+        case LLILOp::Sar:
         case LLILOp::Mul:
         case LLILOp::Div:
+        case LLILOp::SDiv:
+        case LLILOp::Mod:
+        case LLILOp::SMod:
         case LLILOp::Cmp: {
             auto m = MLILExpr::make(mapBinOp(e->op));
             for (auto& o : e->operands) m->operands.push_back(transform(o));

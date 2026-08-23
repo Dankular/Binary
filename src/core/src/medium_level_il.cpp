@@ -18,8 +18,12 @@ std::string toString(MLILOp op) {
         case MLILOp::Xor: return "xor";
         case MLILOp::Shl: return "shl";
         case MLILOp::Shr: return "shr";
+        case MLILOp::Sar: return "sar";
         case MLILOp::Mul: return "mul";
         case MLILOp::Div: return "div";
+        case MLILOp::SDiv: return "sdiv";
+        case MLILOp::Mod: return "mod";
+        case MLILOp::SMod: return "smod";
         case MLILOp::Cmp: return "cmp";
         case MLILOp::If: return "if";
         case MLILOp::Goto: return "goto";

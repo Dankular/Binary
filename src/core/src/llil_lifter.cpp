@@ -218,6 +218,15 @@ private:
             {"&", LLILOp::And}, {"|", LLILOp::Or},  {"^", LLILOp::Xor}, {"<<", LLILOp::Shl},
             {">>", LLILOp::Shr}, {"==", LLILOp::Cmp}, {"<", LLILOp::Cmp}, {">", LLILOp::Cmp},
             {"<=", LLILOp::Cmp}, {">=", LLILOp::Cmp},
+            // Signed/arithmetic variants — verified directly against real
+            // compiled sar/idiv instructions' ESIL, not guessed (see
+            // docs/ARCHITECTURE.md's type system section): x86's `sar`
+            // lifts to ESIL `>>>>` where `shr` lifts to plain `>>`, and
+            // `idiv`/signed `%` use `~/`/`~%` where `div`/unsigned `%` use
+            // plain `/`/`%`. Distinguishing these matters beyond just
+            // faithful lifting — the operator itself is real evidence for
+            // signedness inference (il::attachTypes()).
+            {">>>>", LLILOp::Sar}, {"~/", LLILOp::SDiv}, {"%", LLILOp::Mod}, {"~%", LLILOp::SMod},
         };
         for (auto& [sym, op] : binops) {
             if (tok == sym) {
@@ -231,6 +240,31 @@ private:
             auto e = LLILExpr::make(LLILOp::Unimplemented);
             e->text = "!";
             e->operands = {a};
+            push(e);
+            return;
+        }
+
+        if (tok == "~") {
+            // Sign-extend: "size,value,~" — a real binary op, not the
+            // 0-pop-1-push generic-unknown-token fallback below. Found by
+            // direct evidence, not guessed: without this, `~`'s expected 2
+            // operands were never popped (it fell into the generic
+            // fallback, which only pushes), silently corrupting the ESIL
+            // evaluator's stack for every later instruction in the same
+            // statement — concretely, this shifted idiv's `~%`/`~/` result
+            // pairing so `edx = ...` picked up an unrelated stack item
+            // instead of the actual remainder, caught by checking `smod`'s
+            // real MLIL output rather than assuming the new SDiv/SMod
+            // lifting (see below) was correct once it stopped printing
+            // "unimplemented". The extension arithmetic itself still isn't
+            // modeled (this project's Unimplemented-not-fabricated
+            // convention, same as "!" above) — only the stack discipline
+            // needed fixing for downstream ops built on it to be correct.
+            auto value = pop();
+            auto size = pop();
+            auto e = LLILExpr::make(LLILOp::Unimplemented);
+            e->text = "~";
+            e->operands = {size, value};
             push(e);
             return;
         }

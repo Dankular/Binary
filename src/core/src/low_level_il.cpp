@@ -20,8 +20,12 @@ std::string toString(LLILOp op) {
         case LLILOp::Xor: return "xor";
         case LLILOp::Shl: return "shl";
         case LLILOp::Shr: return "shr";
+        case LLILOp::Sar: return "sar";
         case LLILOp::Mul: return "mul";
         case LLILOp::Div: return "div";
+        case LLILOp::SDiv: return "sdiv";
+        case LLILOp::Mod: return "mod";
+        case LLILOp::SMod: return "smod";
         case LLILOp::Cmp: return "cmp";
         case LLILOp::If: return "if";
         case LLILOp::Goto: return "goto";

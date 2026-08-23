@@ -130,7 +130,7 @@ everything it would sit on top of already exists and works.
       mutation through the same passes the CLI runs), not attempted yet;
       see ARCHITECTURE.md's Python bindings section
 
-## Milestone 3 — Decompiler (text-output integration complete; p-code → MLIL translation and type system v1 extensions are documented follow-ons)
+## Milestone 3 — Decompiler (text-output integration and type system v1 signedness inference complete; p-code → MLIL translation and the rest of type system v1 extensions — register/flag types, pointer/struct recovery — are documented follow-ons)
 
 - [x] `IAnalysisBackend::decompile()`, implemented by `RizinBackend` over
       rz-ghidra — a self-contained port of Ghidra's C++ decompiler (no
@@ -161,12 +161,34 @@ everything it would sit on top of already exists and works.
       underlying decompiler without the undocumented/version-sensitive
       pipe protocol or a JVM dependency this item originally assumed were
       necessary
-- [ ] Type system v1 extensions: signedness inference, register/flag
-      variable types, pointer/struct recovery — explicitly out of scope
-      for v1 (see ARCHITECTURE.md's type system section) and explicitly
-      gated there on "once the Ghidra decompiler integration exists to
-      cross-check against" — true as of this milestone, so this item is
-      now unblocked, not just theoretically future work
+- [x] Type system v1 extensions, signedness inference: `il::attachTypes()`
+      now infers signed vs. unsigned on Stack variables from real evidence —
+      direct or register-copy-provenance use as an operand/destination of
+      `sar`/`sdiv`/`smod` (LLIL ops that only exist because ESIL itself
+      distinguishes them from `shr`/`div`/`mod` at the operator level:
+      `>>>>` vs `>>`, `~/` vs `/`, `~%` vs `%` — verified against real
+      compiled `sar`/`idiv` ESIL, not assumed). Verified end to end —
+      `scripts/type_inference_smoke_test.sh` — against 6 real signed/
+      unsigned fixture functions (div/mod/shift pairs), asserting the
+      actual `int32_t`/`uint32_t` split in `--mlil` output both directions
+      (a fake "always signed" or "always unsigned" pass fails half the
+      assertions). Three real bugs found and fixed along the way: (1) the
+      ESIL sign-extend operator `~` wasn't consuming its 2 stack operands,
+      corrupting RPN stack alignment for every op downstream in the same
+      statement; (2) evidence collection matching only *direct* stack-
+      variable operands never fired on any real -O0 fixture, since -O0
+      code always routes through a register copied from the stack slot —
+      fixed by tracking per-block register-copy provenance, including
+      resolving x86-64 sub-register aliasing (`eax`/`rax` naming the same
+      physical register at different widths); (3) that provenance tracking
+      was itself losing evidence on `var = sar(var, ...)` under pre-order
+      traversal (erasing the register's mapping before the nested signed
+      op could read it) — fixed by walking post-order. See
+      docs/ARCHITECTURE.md's type system section.
+- [ ] Type system v1 extensions, remaining: register/flag variable types,
+      pointer/struct recovery — still out of scope for v1 (see
+      ARCHITECTURE.md's type system section); signedness inference above
+      is the only piece of this item done so far
 
 ## Milestone 4 — Dynamic sandbox (core pipeline complete; Windows sample execution, opportunistic KVM, network fakery, and GUI surfacing are documented follow-ons)
 

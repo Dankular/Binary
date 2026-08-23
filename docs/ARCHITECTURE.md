@@ -185,15 +185,41 @@ MIPS) — see `scripts/multiarch_smoke_test.sh`.
 primitives, pointers, arrays, structs/unions, and function signatures, with
 C-like rendering (`render(const Type&)`). `il::attachTypes()`
 (`src/core/src/type_inference.cpp`) is the "propagate through MLIL" step —
-scoped honestly rather than aspirationally: it assigns an unsigned integer
-`Type` to every recovered stack variable, sized from the actual
-memory-access width that variable was promoted from (real evidence, so a
-real assignment). It deliberately does **not** attempt signedness inference,
-register/flag variable types (needs arch-specific register-width metadata
-not yet consumed from the backend), or pointer/struct recovery (needs
-cross-reference and usage analysis) — those are natural extensions of this
-same pass, not a rewrite, and are better attempted once the Ghidra
-decompiler integration (Milestone 3) exists to cross-check against.
+scoped honestly rather than aspirationally: it assigns an integer `Type` to
+every recovered stack variable, sized from the actual memory-access width
+that variable was promoted from (real evidence, so a real assignment).
+
+Signedness is inferred, not defaulted to unsigned: LLIL/MLIL distinguish
+`Sar`/`SDiv`/`SMod` (arithmetic-shift/signed-division/signed-modulo) from
+their unsigned `Shr`/`Div`/`Mod` counterparts because the underlying ESIL
+genuinely does — x86 `sar` lifts to `>>>>`, `shr` to `>>`; `idiv` to `~/`,
+`div` to `/`; `idiv`'s remainder to `~%`, `div`'s to `%` (verified directly
+against real compiled ESIL, not assumed). A two-pass walk over each MLIL
+block collects signedness evidence before assigning any types: pass 1 marks
+a Stack variable signed if it's a direct operand/destination of one of
+those signed ops, *or* — the case that actually fires on real -O0 code,
+where a signed op's operand is essentially always a register freshly
+copied from the stack slot rather than the stack slot itself — if it's the
+most recent stack-variable source of a register that's later used as a
+signed operand. That register-copy provenance is tracked per basic block in
+instruction order and resolves x86-64 sub-register aliasing (`eax`/`ax`/
+`al`/`ah` all naming the same physical storage as `rax`), and the walk is
+post-order so a statement like `eax = sar(eax, 2)` collects evidence from
+the nested `sar` before this statement's own assignment overwrites `eax`'s
+provenance mapping. Pass 2 then assigns each Stack variable's `Type` using
+pass 1's evidence, defaulting to unsigned when there is none. This is
+deliberately shallow — one register-copy hop, not a full dataflow/taint
+analysis through arbitrary arithmetic — so a positive is always traceable,
+real evidence, never an inference chain that could as easily be wrong.
+Verified against 6 real signed/unsigned fixture functions (div/mod/shift
+pairs) in both directions — `scripts/type_inference_smoke_test.sh`.
+
+Still deliberately out of scope: register/flag variable types (needs
+arch-specific register-width metadata not yet consumed from the backend),
+and pointer/struct recovery (needs cross-reference and usage analysis) —
+natural extensions of this same pass, not a rewrite, and better attempted
+now that the Ghidra decompiler integration (Milestone 3) exists to
+cross-check against.
 
 ## High-Level IL (HLIL)
 

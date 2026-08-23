@@ -48,7 +48,16 @@ enum class MLILOp {
               // (globals, heap, computed addresses) — operands[0] = address
     Store,   // memory write, same caveat — operands = {address, value}
     SetVar,  // var = operands[0]
-    Add, Sub, And, Or, Xor, Shl, Shr, Mul, Div, Cmp,
+    Add, Sub, And, Or, Xor, Shl,
+    Shr,  // logical (unsigned) right shift
+    Sar,  // arithmetic (signed) right shift — real signedness evidence,
+          // see il::attachTypes()
+    Mul,
+    Div,  // unsigned division
+    SDiv, // signed division — same signedness-evidence role as Sar
+    Mod,  // unsigned modulo
+    SMod, // signed modulo — same signedness-evidence role as Sar
+    Cmp,
     If,      // operands[0] = condition; trueTarget/falseTarget = block addresses
     Goto,
     Call,    // operands[0] = target

@@ -26,9 +26,14 @@ enum class LLILOp {
     Or,
     Xor,
     Shl,
-    Shr,
+    Shr,  // logical (unsigned) right shift — ESIL `>>`
+    Sar,  // arithmetic (signed) right shift — ESIL `>>>>`; real evidence the
+          // operand/result is signed, see il::attachTypes()
     Mul,
-    Div,
+    Div,  // unsigned division — ESIL `/`
+    SDiv, // signed division — ESIL `~/`; same signedness-evidence role as Sar
+    Mod,  // unsigned modulo — ESIL `%`
+    SMod, // signed modulo — ESIL `~%`; same signedness-evidence role as Sar
     Cmp, // sets flags as a side effect (backend-specific until MLIL models flags properly)
     If,      // operand[0] = condition expr; trueTarget/falseTarget addresses
     Goto,    // trueTarget = target address
