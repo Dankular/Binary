@@ -17,11 +17,16 @@ in ARCHITECTURE.md), and Rizin is this project's target production backend.
 Only declared/built when `COMPASS_HAVE_RIZIN` is set.
 
 ```
-compass-cli --debug <path> [--debug-arg <arg>]... [--break <symbol>]... [--timeout <secs>]
+compass-cli --debug <path> [--debug-arg <arg>]... [--break <symbol>]...
+    [--watch <symbol-or-0xaddr>[:size[:perm]]]... [--continue <N>] [--timeout <secs>]
 ```
 
-Resumes execution once and reports the first stop (breakpoint hit, exit,
-or timeout) — one action, one report, matching `--detonate`'s shape.
+Resumes execution and reports each stop (breakpoint/watchpoint hit, exit,
+or timeout) — by default just the first one, matching `--detonate`'s
+one-action-one-report shape; `--continue <N>` loops `continueExec()` up to
+`N` times in the same process, printing a `-- stop <i> --` marker and the
+live register state before each subsequent resume, stopping early on
+exit/timeout/error. See "Debugger v1 rounding-out" below.
 
 ## Why breakpoints are set by symbol name, not a static address
 
@@ -153,9 +158,48 @@ unmapped-address write, not assumed.
 
 **Deferred, not attempted in this pass:** remote debugging (gdbserver/WinDbg
 protocol — `RzDebug` already has backends for both, wiring them into
-`IDebuggerBackend` is a real but separate follow-on), watchpoints, and
-multi-stop session control (continuing past a hit breakpoint without a
-fresh CLI invocation — `continueExec()` itself already handles being
-called repeatedly correctly, confirmed directly against a real loop
-fixture hitting the same breakpoint three times with the right
-per-iteration register state each time; the gap is CLI-only).
+`IDebuggerBackend` is a real but separate follow-on).
+
+## Debugger v1 rounding-out: multi-stop session control and watchpoints
+
+**Multi-stop** (fully working, verified end to end): `compass-cli --debug
+... --continue <N>` loops `continueExec()` in one process instead of
+requiring a fresh CLI invocation per breakpoint hit —
+`scripts/debugger_smoke_test.sh` drives a real fixture (`add()` called 3
+times in a loop) through 4 stops (3 breakpoint hits + the exit), asserting
+the *actual* per-call register state at each one (`rdi`/`rsi` reflecting
+each call's real arguments), not just "N stops happened."
+`continueExec()` itself needed no changes — it already handled repeated
+calls correctly (see the now-superseded note this replaced), the gap was
+purely that the CLI never looped.
+
+**Watchpoints** (implemented, partially verifiable in this environment):
+`IDebuggerBackend::addWatchpoint(addr, size, onRead, onWrite)` /
+`removeWatchpoint(addr)`, backed by RzDebug's `dbw <perm> <size>` —
+confirmed directly (via `dbl` right after adding one) that RzDebug tracks
+a watchpoint in the *same* breakpoint list a regular execution breakpoint
+lives in (`hwsw=hw`, `type=break`; `db-` removes either), not a separate
+watchpoint-only command surface. That's also why a watchpoint hit needs
+its own bookkeeping to tell apart from a regular breakpoint hit:
+`continueExec()`'s `reason.type` doesn't distinguish them (both come back
+`RZ_DEBUG_REASON_BREAKPOINT`) — `RizinDebuggerBackend` tracks its own set
+of watched addresses and checks `reason.bp_addr` against it.
+`resolveSymbol()` was extended to also check `isj` (the ordinary symbol
+table, which carries data symbols like global variables), not just `aflj`
+(functions only) — a watchpoint target is normally a variable, not a
+function.
+
+What this environment cannot verify: the watchpoint actually *firing*.
+RzDebug's own hardware-watchpoint arming — `ptrace(PTRACE_POKEUSER)` on
+the x86 debug control register (dr7) — fails here with `ptrace POKEUSER:
+Invalid argument`, reproduced identically via raw `rizin -d` (not specific
+to this project's own launch sequence), across every permission/size
+combination tried. This is not a broader environment restriction: `gdb`'s
+own hardware watchpoints (`watch <var>`) work correctly in this exact
+container. So this looks like a real RzDebug (v0.7.4) / kernel interaction
+bug this project's own code cannot fix, not something to silently paper
+over. `scripts/debugger_smoke_test.sh` verifies what *is* real here:
+`addWatchpoint()` is accepted, `resolveSymbol()` correctly resolves the
+data symbol, and setting a watchpoint doesn't disturb the rest of a debug
+session (a subsequent breakpoint still hits normally) — it does not (and
+cannot, honestly) assert a watchpoint stop actually happens.

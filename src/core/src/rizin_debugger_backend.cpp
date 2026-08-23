@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <regex>
+#include <set>
 #include <sstream>
 #include <thread>
 #include <unistd.h>
@@ -122,20 +123,15 @@ public:
     }
 
     std::optional<Address> resolveSymbol(const std::string& name) override {
-        auto j = runJson("aflj");
-        if (!j) return std::nullopt;
-        for (auto& fn : *j) {
-            std::string fname = fn.value("name", "");
-            // Matches a bare name ("main") or a "sym."/"fcn."-prefixed one
-            // ("sym.add") by its suffix after the last '.', same convention
-            // signature_smoke_test.sh already relies on for these listings.
-            if (fname == name) return fn.value("offset", Address{0});
-            auto dot = fname.rfind('.');
-            if (dot != std::string::npos && fname.substr(dot + 1) == name) {
-                return fn.value("offset", Address{0});
-            }
-        }
-        return std::nullopt;
+        if (auto addr = findInJsonList("aflj", name, "offset")) return addr;
+        // aflj only lists functions — a watchpoint target is normally a
+        // *data* symbol (a global variable), which lives in the ordinary
+        // symbol table instead (`isj`), keyed by "vaddr" rather than
+        // "offset" — verified directly against a real global variable
+        // fixture, not assumed. Checked second (functions are the more
+        // common lookup) rather than merged, since the two commands use
+        // different field names for the same concept.
+        return findInJsonList("isj", name, "vaddr");
     }
 
     bool addBreakpoint(Address addr) override {
@@ -147,6 +143,34 @@ public:
     bool removeBreakpoint(Address addr) override {
         seek(addr);
         runCmd("db-");
+        return true;
+    }
+
+    // `dbw <perm> <size>` at the current offset — confirmed directly (via
+    // `dbl` right after adding one) that RzDebug tracks a watchpoint in the
+    // exact same breakpoint list a regular execution breakpoint lives in
+    // (hwsw=hw, type=break, same `db-`/`dbl` commands apply to both) —
+    // there is no separate watchpoint-only command surface. That's also
+    // *why* continueExec() below needs its own bookkeeping (watchpoints_)
+    // to tell a watchpoint hit apart from a plain breakpoint hit: RzDebug's
+    // own stop-reason type doesn't distinguish them (both come back
+    // RZ_DEBUG_REASON_BREAKPOINT).
+    bool addWatchpoint(Address addr, std::size_t size, bool onRead, bool onWrite) override {
+        if (!onRead && !onWrite) return false;
+        seek(addr);
+        std::string perm = onRead && onWrite ? "rw" : onRead ? "r" : "w";
+        std::string out = runCmd("dbw " + perm + " " + std::to_string(size));
+        if (out.find("Cannot") != std::string::npos || out.find("ERROR") != std::string::npos) {
+            return false;
+        }
+        watchpoints_.insert(addr);
+        return true;
+    }
+
+    bool removeWatchpoint(Address addr) override {
+        seek(addr);
+        runCmd("db-"); // same removal command as a regular breakpoint — see addWatchpoint()'s note
+        watchpoints_.erase(addr);
         return true;
     }
 
@@ -235,8 +259,26 @@ public:
             ev.exitCode = *exitCode;
             exited_ = true;
         } else if (reasonType == RZ_DEBUG_REASON_BREAKPOINT) {
-            ev.reason = DebugStopEvent::Reason::Breakpoint;
-            ev.pc = core_->dbg->reason.bp_addr ? core_->dbg->reason.bp_addr : core_->dbg->stopaddr;
+            // RzDebug's own reason type doesn't distinguish a watchpoint
+            // hit from a regular execution breakpoint hit — both come back
+            // RZ_DEBUG_REASON_BREAKPOINT (see addWatchpoint()'s comment).
+            // reason.bp_addr is the address of whichever breakpoint/
+            // watchpoint object actually fired, which is how this tells
+            // them apart: it's in watchpoints_ (a *data* address we set a
+            // watch on) for a watchpoint, or (for a normal execution
+            // breakpoint, where the breakpoint's own address and the
+            // stopped-at instruction coincide) equal to stopaddr otherwise.
+            // ev.pc itself is always the real, current instruction pointer
+            // (stopaddr) — bp_addr is a *watched memory address* for a
+            // watchpoint hit, not a program counter, so using it for ev.pc
+            // there would misreport where the debuggee actually is.
+            if (watchpoints_.count(core_->dbg->reason.bp_addr) != 0) {
+                ev.reason = DebugStopEvent::Reason::Watchpoint;
+                ev.pc = core_->dbg->stopaddr;
+            } else {
+                ev.reason = DebugStopEvent::Reason::Breakpoint;
+                ev.pc = core_->dbg->reason.bp_addr ? core_->dbg->reason.bp_addr : core_->dbg->stopaddr;
+            }
         } else if (!processAlive()) {
             // Fallback for an exit whose text this build's two known
             // message formats didn't match (see parseExitCode) — still
@@ -301,6 +343,7 @@ private:
     RzCore* core_ = nullptr;
     int pid_ = -1;
     bool exited_ = false;
+    std::set<Address> watchpoints_; // see continueExec()'s note on why this bookkeeping is needed
 
     void seek(Address addr) {
         std::string out = runCmd("s " + std::to_string(addr));
@@ -323,6 +366,25 @@ private:
         } catch (const json::parse_error&) {
             return std::nullopt;
         }
+    }
+
+    /// Runs `cmd` (a JSON-list-producing command like `aflj`/`isj`) and
+    /// finds an entry named `name` (matched by exact name or by suffix
+    /// after the last '.', same convention as resolveSymbol()'s existing
+    /// note on prefixed names), returning its `addrField`.
+    std::optional<Address> findInJsonList(const std::string& cmd, const std::string& name,
+                                           const std::string& addrField) const {
+        auto j = runJson(cmd);
+        if (!j) return std::nullopt;
+        for (auto& entry : *j) {
+            std::string entryName = entry.value("name", "");
+            if (entryName == name) return entry.value(addrField, Address{0});
+            auto dot = entryName.rfind('.');
+            if (dot != std::string::npos && entryName.substr(dot + 1) == name) {
+                return entry.value(addrField, Address{0});
+            }
+        }
+        return std::nullopt;
     }
 
     bool processAlive() const {

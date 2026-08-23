@@ -36,7 +36,8 @@ void printUsage(const char* argv0) {
               << "  " << argv0 << " --detonate <sample> --windows-iso <path-or-VERSION> [--timeout <secs>]\n"
               << "  " << argv0 << " --function <name> --decompile <binary>\n"
               << "  " << argv0 << " --function <name> --pcode-mlil <binary>\n"
-              << "  " << argv0 << " --debug <path> [--debug-arg <arg>]... [--break <symbol>]... [--timeout <secs>] [--poke-stack <hexbytes>]\n";
+              << "  " << argv0 << " --debug <path> [--debug-arg <arg>]... [--break <symbol>]...\n"
+              << "      [--watch <symbol-or-0xaddr>[:size[:perm]]]... [--continue <N>] [--timeout <secs>] [--poke-stack <hexbytes>]\n";
 }
 
 void printDetonationReport(const DetonationReport& r) {
@@ -72,6 +73,9 @@ void printDebugStopEvent(const DebugStopEvent& ev) {
     switch (ev.reason) {
         case DebugStopEvent::Reason::Breakpoint:
             std::cout << "stopped: breakpoint\npc: 0x" << std::hex << ev.pc << std::dec << "\n";
+            break;
+        case DebugStopEvent::Reason::Watchpoint:
+            std::cout << "stopped: watchpoint\npc: 0x" << std::hex << ev.pc << std::dec << "\n";
             break;
         case DebugStopEvent::Reason::Exited:
             std::cout << "stopped: exited\nexitCode: " << ev.exitCode << "\n";
@@ -135,7 +139,8 @@ int main(int argc, char** argv) {
     std::string pokeHex;
     int timeoutSeconds = 30;
     bool timeoutExplicit = false;
-    std::vector<std::string> pluginPaths, passNames, debugArgs, breakSymbols;
+    std::vector<std::string> pluginPaths, passNames, debugArgs, breakSymbols, watchSpecs;
+    int maxStops = 1;
     for (std::size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--list-functions") listFunctions = true;
         else if (args[i] == "--info") showInfo = true;
@@ -162,6 +167,8 @@ int main(int argc, char** argv) {
         else if (args[i] == "--debug" && i + 1 < args.size()) debugPath = args[++i];
         else if (args[i] == "--debug-arg" && i + 1 < args.size()) debugArgs.push_back(args[++i]);
         else if (args[i] == "--break" && i + 1 < args.size()) breakSymbols.push_back(args[++i]);
+        else if (args[i] == "--watch" && i + 1 < args.size()) watchSpecs.push_back(args[++i]);
+        else if (args[i] == "--continue" && i + 1 < args.size()) maxStops = std::stoi(args[++i]);
         else if (args[i] == "--poke-stack" && i + 1 < args.size()) pokeHex = args[++i];
         else path = args[i];
     }
@@ -262,31 +269,81 @@ int main(int argc, char** argv) {
             }
             std::cerr << "breakpoint set: " << sym << " @ 0x" << std::hex << *addr << std::dec << "\n";
         }
-        auto stop = debugger->continueExec(static_cast<std::uint32_t>(timeoutSeconds));
-        printDebugStopEvent(stop);
-        if (stop.reason == DebugStopEvent::Reason::Breakpoint) {
-            std::cout << "\nregisters:\n";
-            for (auto& reg : debugger->registers()) {
-                std::cout << "  " << reg.name << " = 0x" << std::hex << reg.value << std::dec << "\n";
+        // --watch <symbol-or-0xaddr>[:size[:perm]] — size defaults to 4
+        // bytes, perm to "rw" (both read and write trigger the watchpoint)
+        // when omitted.
+        for (auto& spec : watchSpecs) {
+            std::string target = spec, sizeStr, permStr;
+            auto c1 = spec.find(':');
+            if (c1 != std::string::npos) {
+                target = spec.substr(0, c1);
+                auto c2 = spec.find(':', c1 + 1);
+                sizeStr = c2 != std::string::npos ? spec.substr(c1 + 1, c2 - c1 - 1) : spec.substr(c1 + 1);
+                if (c2 != std::string::npos) permStr = spec.substr(c2 + 1);
             }
-            if (!pokeHex.empty()) {
-                std::vector<std::uint8_t> bytes;
-                for (std::size_t i = 0; i + 1 < pokeHex.size(); i += 2) {
-                    bytes.push_back(static_cast<std::uint8_t>(std::stoul(pokeHex.substr(i, 2), nullptr, 16)));
-                }
-                auto rsp = debugger->registerValue("rsp");
-                if (!rsp) {
-                    std::cerr << "error: couldn't read rsp for --poke-stack\n";
-                    return 1;
-                }
-                bool wrote = debugger->writeMemory(*rsp, bytes);
-                auto readBack = debugger->readMemory(*rsp, bytes.size());
-                std::cout << "\npoke-stack: wrote=" << (wrote ? "true" : "false") << " readback=";
-                for (auto b : readBack) {
-                    std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(b);
-                }
-                std::cout << std::dec << "\n";
+            std::size_t size = sizeStr.empty() ? 4 : static_cast<std::size_t>(std::stoul(sizeStr));
+            bool onRead = permStr.empty() || permStr.find('r') != std::string::npos;
+            bool onWrite = permStr.empty() || permStr.find('w') != std::string::npos;
+
+            std::optional<Address> addr;
+            if (target.rfind("0x", 0) == 0) {
+                addr = std::stoull(target, nullptr, 16);
+            } else {
+                addr = debugger->resolveSymbol(target);
             }
+            if (!addr) {
+                std::cerr << "error: couldn't resolve watchpoint target: " << target << "\n";
+                return 1;
+            }
+            if (!debugger->addWatchpoint(*addr, size, onRead, onWrite)) {
+                std::cerr << "error: failed to set watchpoint at " << target << " (0x" << std::hex << *addr
+                           << std::dec << ")\n";
+                return 1;
+            }
+            std::cerr << "watchpoint set: " << target << " @ 0x" << std::hex << *addr << std::dec << " size="
+                       << size << " perm=" << (onRead ? "r" : "") << (onWrite ? "w" : "") << "\n";
+        }
+
+        // Multi-stop session control: continueExec() itself already
+        // supports being called repeatedly (see docs/DEBUGGER.md) — this
+        // loop is what actually exercises that from one CLI invocation,
+        // instead of requiring a fresh process per breakpoint/watchpoint
+        // hit. Defaults to 1 (maxStops's default), so a plain --debug
+        // invocation with no --continue behaves exactly as before.
+        DebugStopEvent stop;
+        for (int stopNum = 1; stopNum <= maxStops; ++stopNum) {
+            stop = debugger->continueExec(static_cast<std::uint32_t>(timeoutSeconds));
+            if (maxStops > 1) std::cout << "-- stop " << stopNum << " --\n";
+            printDebugStopEvent(stop);
+            if (stop.reason == DebugStopEvent::Reason::Breakpoint ||
+                stop.reason == DebugStopEvent::Reason::Watchpoint) {
+                std::cout << "\nregisters:\n";
+                for (auto& reg : debugger->registers()) {
+                    std::cout << "  " << reg.name << " = 0x" << std::hex << reg.value << std::dec << "\n";
+                }
+                if (!pokeHex.empty()) {
+                    std::vector<std::uint8_t> bytes;
+                    for (std::size_t i = 0; i + 1 < pokeHex.size(); i += 2) {
+                        bytes.push_back(
+                            static_cast<std::uint8_t>(std::stoul(pokeHex.substr(i, 2), nullptr, 16)));
+                    }
+                    auto rsp = debugger->registerValue("rsp");
+                    if (!rsp) {
+                        std::cerr << "error: couldn't read rsp for --poke-stack\n";
+                        return 1;
+                    }
+                    bool wrote = debugger->writeMemory(*rsp, bytes);
+                    auto readBack = debugger->readMemory(*rsp, bytes.size());
+                    std::cout << "\npoke-stack: wrote=" << (wrote ? "true" : "false") << " readback=";
+                    for (auto b : readBack) {
+                        std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(b);
+                    }
+                    std::cout << std::dec << "\n";
+                }
+            } else {
+                break; // exited/timeout/error/unknown — nothing more to continue past
+            }
+            if (maxStops > 1) std::cout << "\n";
         }
         return stop.reason == DebugStopEvent::Reason::Error ? 1 : 0;
 #else

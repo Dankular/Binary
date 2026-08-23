@@ -22,6 +22,7 @@ struct RegisterValue {
 struct DebugStopEvent {
     enum class Reason {
         Breakpoint,
+        Watchpoint, // a hardware watchpoint (see addWatchpoint()) fired — see docs/DEBUGGER.md
         Exited,
         Timeout,
         Error,
@@ -29,7 +30,7 @@ struct DebugStopEvent {
                  // unhandled signal) — see docs/DEBUGGER.md
     };
     Reason reason = Reason::Unknown;
-    Address pc = 0;         // valid for Breakpoint/Unknown
+    Address pc = 0;         // valid for Breakpoint/Watchpoint/Unknown
     int exitCode = 0;       // valid for Exited
     std::string error;      // valid for Error
 };
@@ -62,6 +63,16 @@ public:
 
     virtual bool addBreakpoint(Address addr) = 0;
     virtual bool removeBreakpoint(Address addr) = 0;
+
+    /// Adds a hardware watchpoint over `size` bytes at `addr` — stops
+    /// continueExec() (Reason::Watchpoint) on a read and/or write to that
+    /// range, per `onRead`/`onWrite`. Backed by real hardware debug
+    /// registers (RzDebug's `dbw`), not single-stepping/polling — see
+    /// docs/DEBUGGER.md for the real per-architecture watchpoint-count
+    /// limit this doesn't itself enforce (the backend reports failure if
+    /// exceeded).
+    virtual bool addWatchpoint(Address addr, std::size_t size, bool onRead, bool onWrite) = 0;
+    virtual bool removeWatchpoint(Address addr) = 0;
 
     /// Resumes execution until a breakpoint, process exit, or timeoutSeconds
     /// elapses (0 = no timeout). A timeout forcibly kills the debuggee (see

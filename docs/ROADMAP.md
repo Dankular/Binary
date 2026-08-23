@@ -313,7 +313,7 @@ everything it would sit on top of already exists and works.
       every other GUI-surfacing item; the sandbox's own headless pipeline
       (above) is fully testable without it
 
-## Milestone 5 — Debugger (local ptrace complete; remote debugging, watchpoints/memory writes/multi-stop, and GUI views are documented follow-ons)
+## Milestone 5 — Debugger (local ptrace complete, including memory writes, multi-stop session control, and a watchpoint API; remote debugging and GUI views are documented follow-ons — see docs/DEBUGGER.md for the one real caveat on watchpoints)
 
 Headless-testable throughout (ptrace/gdbserver interaction, breakpoint/
 register/memory state — none of it needs a display), which is why this
@@ -352,11 +352,23 @@ this roadmap.
 - [x] Memory writes — `IDebuggerBackend::writeMemory()`, verified end to
       end (`compass-cli --debug ... --poke-stack <hex>`,
       `scripts/debugger_smoke_test.sh`); see docs/DEBUGGER.md.
-- [ ] Debugger v1 rounding-out: watchpoints, and multi-stop session
-      control (continuing past a hit breakpoint without a fresh CLI
-      invocation — `continueExec()` itself already supports repeated
-      calls correctly, this is a CLI-only gap, see docs/DEBUGGER.md's
-      scope note). Smaller and more contained than remote debugging above.
+- [x] Debugger v1 rounding-out, multi-stop session control: `compass-cli
+      --debug ... --continue <N>` loops `continueExec()` in one process
+      instead of a fresh CLI invocation per hit — verified against a real
+      fixture (3 real per-call register states across 3 breakpoint hits,
+      then the exit), `scripts/debugger_smoke_test.sh`. See docs/DEBUGGER.md.
+- [x] Debugger v1 rounding-out, watchpoints: `IDebuggerBackend::addWatchpoint()`/
+      `removeWatchpoint()`, backed by RzDebug's `dbw`; `resolveSymbol()`
+      extended to also resolve data symbols (not just functions), since a
+      watchpoint target is normally a variable. What's real but only
+      partially verifiable here: RzDebug's own hardware-watchpoint arming
+      fails in this specific test environment (`ptrace POKEUSER: Invalid
+      argument` on the x86 debug control register) while `gdb`'s hardware
+      watchpoints work fine in the same container — a real RzDebug/
+      environment interaction issue this project's code can't fix, not
+      silently glossed over. See docs/DEBUGGER.md for the full evidence
+      and exactly what `scripts/debugger_smoke_test.sh` does and doesn't
+      assert as a result.
 - [ ] GUI breakpoint/register/memory views — deferred to Milestone 8
 
 ## Milestone 6 — Project management & collaboration
