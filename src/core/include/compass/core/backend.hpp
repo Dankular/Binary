@@ -44,6 +44,18 @@ public:
     /// Returns false (with getLastError() set) on failure.
     virtual bool load(const std::string& path) = 0;
 
+    /// Loads a raw, headerless blob — firmware, a memory/flash dump, a
+    /// bare shellcode file — with no format for the backend to
+    /// auto-detect. `arch`/`bits` (0 = the architecture's natural width)
+    /// tell it how to disassemble; `baseAddr` is where byte 0 of the file
+    /// should be mapped (0 for "no idea", or a real flash/load address
+    /// when known). Same success/failure contract as load(). See
+    /// docs/ARCHITECTURE.md's note on why this needs a separate method
+    /// rather than optional parameters on load(): there is no header to
+    /// fall back to auto-detecting from if these are wrong, unlike load()
+    /// where they're never needed at all.
+    virtual bool loadRaw(const std::string& path, Architecture arch, std::uint32_t bits, Address baseAddr) = 0;
+
     virtual const std::string& lastError() const = 0;
 
     /// Full binary model: sections, symbols, functions with basic blocks

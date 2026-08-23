@@ -43,6 +43,20 @@ Architecture archFromInfo(const std::string& arch, int bits) {
     return Architecture::Unknown;
 }
 
+// Inverse of archFromInfo(), needed by loadRaw() — see rizin_backend.cpp's
+// identical helper for why.
+std::pair<std::string, int> infoFromArch(Architecture arch) {
+    switch (arch) {
+        case Architecture::X86: return {"x86", 32};
+        case Architecture::X86_64: return {"x86", 64};
+        case Architecture::ARM32: return {"arm", 32};
+        case Architecture::ARM64: return {"arm", 64};
+        case Architecture::MIPS: return {"mips", 32};
+        case Architecture::Unknown: return {"", 0};
+    }
+    return {"", 0};
+}
+
 /// Splits "mov rax, rbx" into ("mov", "rax, rbx"); a bare mnemonic like
 /// "ret" splits into ("ret", "").
 std::pair<std::string, std::string> splitMnemonic(const std::string& opcode) {
@@ -77,6 +91,59 @@ public:
 
         binary_.path = path;
         if (!loadInfo() || !loadSections() || !loadSymbols() || !loadFunctions()) {
+            return false;
+        }
+        return true;
+    }
+
+    // Raw/headerless-blob loading — see rizin_backend.cpp's loadRaw() for
+    // the full design note; this is the same mechanism (confirmed
+    // separately against the plain radare2 CLI, not assumed to carry over
+    // just because Rizin is a fork): open the file plainly (radare2's own
+    // bin-detection already falls back to no format for a headerless
+    // file), set asm.arch/asm.bits explicitly first since nothing
+    // auto-detects them without a header, then analyze.
+    bool loadRaw(const std::string& path, Architecture arch, std::uint32_t bits, Address baseAddr) override {
+        auto [archStr, naturalBits] = infoFromArch(arch);
+        if (archStr.empty()) {
+            error_ = "loadRaw: unknown/unsupported architecture";
+            return false;
+        }
+        int effectiveBits = bits != 0 ? static_cast<int>(bits) : naturalBits;
+
+        core_ = r_core_new();
+        if (!core_) {
+            error_ = "r_core_new failed";
+            return false;
+        }
+        r_config_set_b(core_->config, "scr.interactive", false);
+        r_config_set(core_->config, "scr.color", "0");
+
+        r_config_set(core_->config, "asm.arch", archStr.c_str());
+        r_config_set_i(core_->config, "asm.bits", effectiveBits);
+
+        // R_PERM_RX, not load()'s R_PERM_R above — same real bug and fix
+        // as rizin_backend.cpp's loadRaw(): a raw/headerless file's one
+        // whole-file IO map gets its permission directly from this open
+        // call (no per-section executable bit to override it, unlike a
+        // real ELF/PE), and without X on it aa/aaa silently find zero
+        // functions.
+        RIODesc* fd = r_core_file_open(core_, path.c_str(), R_PERM_RX, baseAddr);
+        if (!fd) {
+            error_ = "failed to open file: " + path;
+            return false;
+        }
+        r_core_bin_load(core_, nullptr, baseAddr);
+        // Same real gap as rizin_backend.cpp's loadRaw(): no entry0 flag to
+        // seed aa/aaa's search at a rebased address, so seek there first.
+        runCmd("s " + std::to_string(baseAddr));
+        runCmd("aaa");
+
+        binary_.path = path;
+        binary_.format = "raw";
+        binary_.arch = arch;
+        binary_.entryPoint = baseAddr;
+        if (!loadSections() || !loadSymbols() || !loadFunctions()) {
             return false;
         }
         return true;

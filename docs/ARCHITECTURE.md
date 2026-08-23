@@ -113,6 +113,48 @@ were: running it against actual compiled binaries
 identically against either backend) rather than trusting that a
 same-lineage API would behave the same.
 
+### Raw firmware blob loading
+
+`IAnalysisBackend::loadRaw(path, arch, bits, baseAddr)` (both backends,
+docs/ROADMAP.md's Milestone 1 item) — a headerless flat binary (firmware,
+a flash/memory dump, bare shellcode) has no format for either backend's
+own detection to work from, so this takes architecture, bit width, and the
+address byte 0 should be mapped at as real caller-supplied evidence,
+exactly the same way a real firmware-analysis workflow always has to
+(there's no header to infer them from, unlike `load()`).
+`compass-cli --raw <arch> [--base-addr <hex>] <blob>` exposes it.
+
+Two real bugs found getting this from "loads without crashing" to "finds
+and lifts real code" — both by direct comparison against a real `rizin`/
+`radare2` CLI session that *did* work, not by reasoning about the API
+alone:
+
+1. **The file's IO map came back non-executable.** `load()`'s existing
+   `RZ_PERM_R`/`R_PERM_R` open flags are fine for a real ELF/PE, because
+   each *section*'s own executable bit — from the file's real section
+   headers — is what `aa`/`aaa`'s analysis actually checks, not the
+   top-level file-open permission. A raw/"any"-format file has no sections
+   at all: its one whole-file IO map's permission comes directly from the
+   flags it's opened with, so `RZ_PERM_R` left every address non-executable
+   — `aa`/`aaa` silently found zero functions even though disassembly at
+   the exact same address was completely correct. Confirmed directly (`oml`
+   showed the map as `r--` instead of `r-x`, the one difference from an
+   otherwise-identical manual CLI session that *did* find functions —
+   `rizin`'s own `main()` opens non-debug targets `RZ_PERM_RX` by default,
+   not `RZ_PERM_R`) before fixing it, not assumed from the symptom alone.
+2. **A rebased load (`--base-addr` other than 0) found nothing.** A real
+   ELF/PE has an `entry0` flag, from its own header, that seeds `aa`/`aaa`'s
+   search regardless of the core's current seek position. A raw file has
+   none — `aa`/`aaa` start looking wherever the core happens to be seeked
+   to, which is 0 right after opening even when the IO map itself was
+   correctly rebased elsewhere. Fixed by explicitly seeking to `baseAddr`
+   before running `aaa`.
+
+Verified against a real headerless flat binary (`objcopy -O binary`) —
+`scripts/raw_blob_smoke_test.sh` — for both backends, including the
+unknown-architecture and rebase cases, not just the default-address happy
+path.
+
 ## Core domain model
 
 `src/core/include/compass/core/`:

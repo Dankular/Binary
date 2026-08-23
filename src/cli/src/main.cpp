@@ -23,6 +23,17 @@ using namespace compass::core;
 
 namespace {
 
+/// Parses --raw's architecture argument — same spellings toString(Architecture)
+/// produces, so a value copied from --info's own "arch:" line round-trips.
+std::optional<Architecture> archFromString(const std::string& s) {
+    if (s == "x86") return Architecture::X86;
+    if (s == "x86_64") return Architecture::X86_64;
+    if (s == "arm32") return Architecture::ARM32;
+    if (s == "arm64") return Architecture::ARM64;
+    if (s == "mips") return Architecture::MIPS;
+    return std::nullopt;
+}
+
 void printUsage(const char* argv0) {
     std::cerr << "Usage:\n"
               << "  " << argv0 << " --list-functions <binary>\n"
@@ -32,6 +43,8 @@ void printUsage(const char* argv0) {
               << "  " << argv0 << " --export-signatures <path> <binary>\n"
               << "  " << argv0 << " --apply-signatures <path> <binary>\n"
               << "  " << argv0 << " --info <binary>\n"
+              << "  " << argv0 << " [--function <name> [--il]...] --raw <arch> [--base-addr <hex>] <blob>\n"
+              << "      (arch: x86, x86_64, arm32, arm64, mips — for a headerless firmware/shellcode blob)\n"
               << "  " << argv0 << " --detonate <sample> [--guest-image <qcow2>] [--timeout <secs>] [--merge-annotations]\n"
               << "  " << argv0 << " --detonate <sample> --windows-iso <path-or-VERSION> [--timeout <secs>]\n"
               << "  " << argv0 << " --function <name> --decompile <binary>\n"
@@ -137,6 +150,7 @@ int main(int argc, char** argv) {
     std::string detonatePath, guestImagePath, windowsIsoOrVersion;
     std::string debugPath;
     std::string pokeHex;
+    std::string rawArch, baseAddrHex;
     int timeoutSeconds = 30;
     bool timeoutExplicit = false;
     std::vector<std::string> pluginPaths, passNames, debugArgs, breakSymbols, watchSpecs;
@@ -170,6 +184,8 @@ int main(int argc, char** argv) {
         else if (args[i] == "--watch" && i + 1 < args.size()) watchSpecs.push_back(args[++i]);
         else if (args[i] == "--continue" && i + 1 < args.size()) maxStops = std::stoi(args[++i]);
         else if (args[i] == "--poke-stack" && i + 1 < args.size()) pokeHex = args[++i];
+        else if (args[i] == "--raw" && i + 1 < args.size()) rawArch = args[++i];
+        else if (args[i] == "--base-addr" && i + 1 < args.size()) baseAddrHex = args[++i];
         else path = args[i];
     }
 
@@ -359,7 +375,19 @@ int main(int argc, char** argv) {
     }
 
     auto backend = makeDefaultAnalysisBackend();
-    if (!backend->load(path)) {
+    if (!rawArch.empty()) {
+        auto arch = archFromString(rawArch);
+        if (!arch) {
+            std::cerr << "error: unknown --raw architecture: " << rawArch
+                       << " (expected one of: x86, x86_64, arm32, arm64, mips)\n";
+            return 1;
+        }
+        Address baseAddr = baseAddrHex.empty() ? 0 : std::stoull(baseAddrHex, nullptr, 16);
+        if (!backend->loadRaw(path, *arch, 0, baseAddr)) {
+            std::cerr << "error: " << backend->lastError() << "\n";
+            return 1;
+        }
+    } else if (!backend->load(path)) {
         std::cerr << "error: " << backend->lastError() << "\n";
         return 1;
     }

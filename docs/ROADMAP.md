@@ -19,7 +19,7 @@ everything it would sit on top of already exists and works.
 - [x] `compass-cli` headless tool
 - [x] Smoke test against a real compiled binary
 
-## Milestone 1 — Backend hardening (core complete; Mach-O, firmware blobs, type libraries/archives, and a job scheduler are documented follow-ons)
+## Milestone 1 — Backend hardening (core complete, including raw firmware blob loading; Mach-O, type libraries/archives, and a job scheduler are documented follow-ons)
 
 - [x] Switch backend from radare2 to Rizin (`librz`) — implemented
       (`src/core/src/rizin_backend.cpp`), auto-selected by CMake/
@@ -48,19 +48,40 @@ everything it would sit on top of already exists and works.
       `scripts/ir_smoke_test.sh`/`scripts/multiarch_smoke_test.sh`
 - [x] Type system v1: primitive + struct/union/pointer types (data model +
       C-like rendering) implemented; propagation through MLIL implemented
-      for stack-variable widths specifically (real evidence-based
-      assignment) — register/flag types, signedness, and pointer/struct
-      recovery are explicitly out of scope for v1, see docs/ARCHITECTURE.md
+      for stack-variable widths and (since Milestone 3's extensions item)
+      signedness, both real evidence-based assignment, not guessed —
+      register/flag types and pointer/struct recovery remain explicitly
+      out of scope for v1, see docs/ARCHITECTURE.md and Milestone 3's
+      "Type system v1 extensions" items
 - [x] Expand file-format coverage validation — PE validated
       (`scripts/multiarch_smoke_test.sh`'s `pe64` case, via mingw-w64);
       Mach-O not attempted (no Apple toolchain available in this
-      environment — a real, not fabricated, gap); raw firmware blobs not
-      yet tested
+      environment — a real, not fabricated, gap); raw firmware blobs now
+      validated too (see the item just below)
 - [ ] Mach-O file format support — blocked on an Apple toolchain to
       produce real test fixtures with, not on any known code gap in
       `rz_bin`/`r_bin` itself (both already parse Mach-O)
-- [ ] Raw firmware blob format validation — untested, not necessarily
-      unsupported; no fixture/test built yet
+- [x] Raw firmware blob format validation:
+      `IAnalysisBackend::loadRaw(path, arch, bits, baseAddr)` — a
+      headerless flat binary has no format for either backend to
+      auto-detect, so this takes the architecture/base-address as real
+      caller-supplied evidence instead of guessing. `compass-cli --raw
+      <arch> [--base-addr <hex>] <blob>`. Two real bugs found and fixed
+      getting this from "loads without crashing" to "finds and lifts real
+      code": a raw file's one whole-file IO map gets its executable bit
+      directly from the flags it's opened with (no per-section executable
+      bit to fall back on, unlike ELF/PE, where the existing `load()`'s
+      read-only open is fine because each section's own bit is what
+      analysis actually checks) — opening read-only left auto-analysis
+      finding zero functions despite disassembly at the exact same address
+      being completely correct; and a rebased (non-default `--base-addr`)
+      load found nothing until the analysis seed was explicitly moved
+      there too, since a raw file has no entry0 flag to seed it
+      automatically the way a real header would. Verified against a real
+      headerless flat binary (`objcopy -O binary`) —
+      `scripts/raw_blob_smoke_test.sh` — for both backends (confirmed
+      directly against radare2 too, not assumed to carry over just because
+      Rizin is a fork).
 - [ ] Type libraries/archives (Ghidra-style shared struct/typedef
       definitions across projects/binaries) — mentioned in README's
       feature table, no design or implementation started; distinct from

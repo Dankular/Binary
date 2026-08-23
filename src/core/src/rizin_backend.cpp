@@ -50,6 +50,22 @@ Architecture archFromInfo(const std::string& arch, int bits) {
     return Architecture::Unknown;
 }
 
+/// The inverse of archFromInfo() above, needed by loadRaw(): a headerless
+/// blob has nothing for Rizin to detect asm.arch/asm.bits from, so the
+/// caller-supplied Architecture has to be translated back into the
+/// `asm.arch`/`asm.bits` config values Rizin itself understands.
+std::pair<std::string, int> infoFromArch(Architecture arch) {
+    switch (arch) {
+        case Architecture::X86: return {"x86", 32};
+        case Architecture::X86_64: return {"x86", 64};
+        case Architecture::ARM32: return {"arm", 32};
+        case Architecture::ARM64: return {"arm", 64};
+        case Architecture::MIPS: return {"mips", 32};
+        case Architecture::Unknown: return {"", 0};
+    }
+    return {"", 0};
+}
+
 std::pair<std::string, std::string> splitMnemonic(const std::string& opcode) {
     auto pos = opcode.find(' ');
     if (pos == std::string::npos) return {opcode, ""};
@@ -91,6 +107,83 @@ public:
 
         binary_.path = path;
         if (!loadInfo() || !loadSections() || !loadSymbols() || !loadFunctions()) {
+            return false;
+        }
+        return true;
+    }
+
+    // Raw/headerless-blob loading (docs/ROADMAP.md's "raw firmware blob
+    // format validation" item). Verified directly against a real
+    // headerless flat binary: opening it plainly (same as load() above)
+    // already gets Rizin's own bin-detection to fall back to its "any"
+    // pseudo-format instead of failing outright (confirmed via `ij`, which
+    // reports {"core": {...}, "format": "any"} — critically, no "bin" key
+    // at all, since there's no header to parse one from) — the missing
+    // piece for it to be *useful* is that `aa`/`aaa` have no code to find
+    // without asm.arch/asm.bits, which nothing auto-detects for a raw
+    // file. Setting them explicitly before opening, confirmed directly:
+    // the exact same file that showed 0 functions/arch=unknown through
+    // load() finds real functions and disassembles real instructions once
+    // asm.arch/asm.bits are set first.
+    //
+    // Skips loadInfo() (unlike load()): its `ij`'s "bin" section doesn't
+    // exist for a raw file (nothing to contradict what the caller already
+    // told us), so binary_.format/arch/entryPoint are set directly from
+    // the arguments here instead.
+    bool loadRaw(const std::string& path, Architecture arch, std::uint32_t bits, Address baseAddr) override {
+        auto [archStr, naturalBits] = infoFromArch(arch);
+        if (archStr.empty()) {
+            error_ = "loadRaw: unknown/unsupported architecture";
+            return false;
+        }
+        int effectiveBits = bits != 0 ? static_cast<int>(bits) : naturalBits;
+
+        core_ = rz_core_new();
+        if (!core_) {
+            error_ = "rz_core_new failed";
+            return false;
+        }
+        rz_config_set_b(core_->config, "scr.interactive", false);
+        rz_config_set(core_->config, "scr.color", "0");
+        rz_core_loadlibs(core_, RZ_CORE_LOADLIBS_ALL); // see load()'s comment on why this call is required
+
+        rz_config_set(core_->config, "asm.arch", archStr.c_str());
+        rz_config_set_i(core_->config, "asm.bits", effectiveBits);
+
+        // RZ_PERM_RX, not load()'s RZ_PERM_R above — real bug found by
+        // direct repro, not assumed: for a real ELF/PE, load()'s
+        // RZ_PERM_R is fine because each *section*'s own executable bit
+        // (from the file's real section headers) is what aa/aaa's
+        // analysis actually checks. A raw/"any"-format file has no
+        // sections at all — its *one* whole-file IO map's permission
+        // comes directly from this open call, and without X on it, aa/aaa
+        // silently find zero functions even though disassembly at the
+        // exact same address is completely correct (confirmed directly:
+        // `oml` showed the map as "r--" instead of "r-x", the one
+        // difference from an otherwise-identical manual `rizin` CLI
+        // session that did find functions — rizin's own main() opens
+        // non-debug targets with RZ_PERM_RX by default, per
+        // librz/main/rizin.c, not RZ_PERM_R).
+        if (!rz_core_file_open_load(core_, path.c_str(), baseAddr, RZ_PERM_RX, false)) {
+            error_ = "failed to open file: " + path;
+            return false;
+        }
+        // A real ELF/PE has an entry0 flag (from its own header) that
+        // seeds aa/aaa's search regardless of the core's current seek
+        // position. A raw/"any" file has none — aa/aaa start looking
+        // around wherever the core happens to be seeked to, which is 0
+        // right after opening even when baseAddr rebased the file's own
+        // IO map elsewhere. Confirmed directly: aaa alone found nothing at
+        // a nonzero baseAddr despite the map itself being correctly
+        // rebased there, until this explicit seek was added.
+        runCmd("s " + std::to_string(baseAddr));
+        runCmd("aaa");
+
+        binary_.path = path;
+        binary_.format = "raw";
+        binary_.arch = arch;
+        binary_.entryPoint = baseAddr;
+        if (!loadSections() || !loadSymbols() || !loadFunctions()) {
             return false;
         }
         return true;
