@@ -225,6 +225,8 @@ Status legend: ✅ implemented · 🚧 in progress / partial · 📋 designed, n
 - [docs/ANNOTATIONS.md](docs/ANNOTATIONS.md) — merging dynamic-analysis findings onto the static model
 - [docs/DECOMPILER.md](docs/DECOMPILER.md) — decompiler design (rz-ghidra integration)
 - [docs/DEBUGGER.md](docs/DEBUGGER.md) — debugger design (RzDebug integration)
+- [docs/RETDEC_EVALUATION.md](docs/RETDEC_EVALUATION.md) — evaluation of
+  avast/retdec against what's already shipped (conclusion: not adopted)
 - [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) — licenses of everything we build on
 
 ## License

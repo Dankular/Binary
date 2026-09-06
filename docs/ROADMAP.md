@@ -135,6 +135,11 @@ everything it would sit on top of already exists and works.
       re-identified at a genuinely different address in a different,
       stripped binary, not a same-offset coincidence — for both backends
       (`scripts/signature_smoke_test.sh`)
+- [ ] Evaluated (not adopted): avast/retdec's own YARA-pattern function-
+      signature toolchain as an alternative/supplement to FLIRT/zignatures
+      above — its shipped pattern database is pinned to a 2019 release and
+      is less current than what's already integrated; see
+      [docs/RETDEC_EVALUATION.md](RETDEC_EVALUATION.md) §2
 - [x] Python-side plugin loading: `importlib`-discovered plugins written
       *in* Python (a `PluginManager` counterpart for Python authors), not
       just calling the C++ API from a Python script. `compass.AnalysisPass`
@@ -234,6 +239,13 @@ everything it would sit on top of already exists and works.
       pointer/struct recovery — still out of scope for v1 (see
       ARCHITECTURE.md's type system section); signedness inference above
       is the only piece of this item done so far
+- [ ] Evaluated (not adopted): avast/retdec's LLVM-based decompiler
+      (`bin2llvmir`/`llvmir2hll`) as a second/alternative `decompile()`
+      backend alongside rz-ghidra — vendors and builds a patched LLVM fork
+      from source (~5-6 GB installed), against a project in its own
+      declared "limited maintenance mode" with no tagged release since
+      2022, for an unmeasured quality benefit over what's already shipped;
+      see [docs/RETDEC_EVALUATION.md](RETDEC_EVALUATION.md) §1
 
 ## Milestone 4 — Dynamic sandbox (core pipeline complete; Windows sample execution, opportunistic KVM, network fakery, and GUI surfacing are documented follow-ons)
 
@@ -333,6 +345,13 @@ everything it would sit on top of already exists and works.
 - [ ] GUI surface for sandbox results — deferred to Milestone 8, same as
       every other GUI-surfacing item; the sandbox's own headless pipeline
       (above) is fully testable without it
+- [ ] Evaluated (not adopted): avast/retdec's unpacker as a static
+      pre-detonation unpacking step — covers exactly two packers (UPX,
+      MPRESS) behind the same heavy LLVM-build dependency as its
+      decompiler; today's sandbox detonates packed samples as-is and
+      captures behavior dynamically instead. Worth a fresh, narrower
+      evaluation only once static pre-unpacking is an actual roadmap item;
+      see [docs/RETDEC_EVALUATION.md](RETDEC_EVALUATION.md) §3
 
 ## Milestone 5 — Debugger (local ptrace complete, including memory writes, multi-stop session control, and a watchpoint API; remote debugging and GUI views are documented follow-ons — see docs/DEBUGGER.md for the one real caveat on watchpoints)
 
